@@ -1,13 +1,13 @@
 CC = gcc
 CFLAGS = -std=c99 -pedantic -Wall -Wextra -Werror
 
-all: server client
+all: tftp-server tftp-client
 
-server: server.c
-	$(CC) $(CFLAGS) server.c -o server
+tftp-server: tftp-server.c
+	$(CC) $(CFLAGS) tftp-server.c -o tftp-server
 
-client: client.c
-	$(CC) $(CFLAGS) client.c -o client
+tftp-client: tftp-client.c
+	$(CC) $(CFLAGS) tftp-client.c -o tftp-client
 
 clean:
-	rm -f server client
+	rm -f tftp-server tftp-client
