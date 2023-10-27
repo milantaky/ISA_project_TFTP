@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>         // sockets duh
-// #include <netinet/in.h>      // ???
+#include <netinet/in.h>      
+#include <netinet/ip.h>       
+#include <netinet/udp.h>      
 // #include <errno.h>           // ???
 #include <signal.h>             // interrupt
 #include <time.h>               // na timeout?
@@ -10,9 +12,8 @@
 #include <arpa/inet.h>          // htons
 #include <net/ethernet.h>       // ???
 
-// TODOOOOOOOOOOOOOOOOOO
 
-int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostname[], char* cestaSoubor[], char* cestaServer[]){
+int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* hostname[], const char* filepath[], const char* dest_filepath[]){
     /*  
     [] = volitelny
     ttftp-client -h hostname [-p port] [-f filepath] -t dest_filepath
@@ -48,7 +49,7 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostnam
             fprintf(stderr, "CHYBA: Spatne zadane parametry\n");
             return 0;
         }
-        *cestaServer = argv[4];
+        *dest_filepath = argv[4];
         return 1;
 
     } else if(pocet == 7) { // S portem, nebo filepath
@@ -65,12 +66,12 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostnam
             fprintf(stderr, "CHYBA: Spatne zadane parametry\n");
             return 0;
         }
-        *cestaServer = argv[6];
+        *dest_filepath = argv[6];
 
         // Port nebo filepath??
         if(strcmp(argv[3], "-p") == 0){
-            if(!((*port = atoi(argv[4])) && *port >= 0 && *port < 65354)){       // Je cislo, a v rozsahu 0 - 65353
-                fprintf(stderr, "CHYBA: Zadany port neni cislo, nebo v rozsahu 0 - 65353\n");
+            if(!((*port = atoi(argv[4])) && *port >= 0 && *port < 65536)){       // Je cislo, a v rozsahu 0 - 65535
+                fprintf(stderr, "CHYBA: Zadany port neni cislo, nebo v rozsahu 0 - 65535\n");
                 return 0;
             }
             return 1;
@@ -80,7 +81,7 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostnam
             fprintf(stderr, "CHYBA: Spatne zadane parametry\n");
             return 0;
         } 
-        *cestaSoubor = argv[4];
+        *filepath = argv[4];
         return 1;
         
     } else {    // 9
@@ -94,8 +95,8 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostnam
 
         // Port
         if(strcmp(argv[3], "-p") == 0){
-            if(!((*port = atoi(argv[4])) && *port >= 0 && *port < 65354)){       // Je cislo, a v rozsahu 0 - 65353
-                fprintf(stderr, "CHYBA: Zadany port neni cislo, nebo v rozsahu 0 - 65353\n");
+            if(!((*port = atoi(argv[4])) && *port >= 0 && *port < 65536)){       // Je cislo, a v rozsahu 0 - 65353
+                fprintf(stderr, "CHYBA: Zadany port neni cislo, nebo v rozsahu 0 - 65535\n");
                 return 0;
             }
         }
@@ -105,14 +106,14 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostnam
             fprintf(stderr, "CHYBA: Spatne zadane parametry\n");
             return 0;
         } 
-        *cestaSoubor = argv[6];
+        *filepath = argv[6];
        
         // Dest_filepath
         if(strcmp(argv[7], "-t") != 0){      
             fprintf(stderr, "CHYBA: Spatne zadane parametry\n");
             return 0;
         }
-        *cestaServer = argv[8];
+        *dest_filepath = argv[8];
         return 1;
     } 
 
@@ -121,23 +122,83 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* hostnam
 
 //===============================================================================================================================
 
+/*
+    TODO
+    - zkontrolovat/prelozit hostname -> ip, DNS
+
+
+
+
+*/
+
+// struct tftpPacket {
+//     struct ip      ip_header;
+//     struct udphdr  udp_header;
+//     //struct tftphdr tftp_header;
+//     char* data;
+// };
+
 int main(int argc, char* argv[]){
 
-    int port = -1;
-    char* hostname;
-    char* cestaServer;
-    char* cestaSoubor;
+    int port = 69;                      // Pokud neni specifikovan, predpoklada se vychozi dle specifikace (69) -> kdyztak se ve funkci prepise
+    const char* hostname      = NULL;
+    const char* dest_filepath = NULL;
+    const char* filepath      = NULL;
+    uint16_t opcode = 0;
 
-    // Kontrola argumentu
-    if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &cestaSoubor, &cestaServer)){
-        return 1;     // Chyba vypsana ve funkci
+    // Kontrola argumentu (Chyba vypsana ve funkci)
+    if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
+
+    // Pokud neni nastaven filepath, pouziva se obsah z stdin (upload - 2 (WRQ)), jinak download - 1 (RRQ)
+    opcode = (!filepath) ? 2 : 1;
+
+    if(opcode == 1){
+        printf("READ\n");
+    } else {
+        printf("WRITE\n");
     }
 
-    //printf("hostname: %s\nport: %d\nfilepath: %s\ncesta: %s\n", hostname, port, cestaSoubor, cestaServer);
-    // printf("hostname: %s\nfilepath: %s\ncesta: %s\n", hostname, cestaSoubor, cestaServer);
-    // printf("hostname: %s\nport: %d\ncesta: %s\n", hostname, port, cestaServer);
-    printf("hostname: %s\ncesta: %s\n", hostname, cestaServer);
+
+    printf("PORT: %d\n", port);
+
+    /*
+    POSTUP:
+        1. vytvorit IP,UDP header
+        2. Pridat k tomu TFTP header
     
+    
+    
+    
+    
+    */
+
+    // // UDP Header
+    // struct udphdr udpHeader;
+    // udpHeader.uh_sport = 55550;         // Source port
+    // udpHeader.uh_dport = port;         // Destination port
+    // udpHeader.uh_ulen;          // Lenght -> Pocet bytu v UDP packetu + 8 (UDP header)
+    // udpHeader.uh_sum = 0;       // 0 if unused
+
+    // // IPv4 Header
+    // ========= znamena dodelat
+    // struct ip ipHeader;
+    // ipHeader.ip_hl = 5;     // Header length
+    // ipHeader.ip_v = 4;      // Version (IPv4)
+    // ipHeader.ip_p = IPPROTO_UDP;    // Protokol
+    // ipHeader.ip_sum = 0;    // Checksum - zatim 0   ==========
+    // ipHeader.ip_tos;        // Type of Service - NO FUCKING IDEA    =============
+    // ipHeader.ip_ttl = 64;   // Time To Live - 64 bylo ve wiresharku, idk
+    // ipHeader.ip_len;        // Komplet delka TFTP (+ 20 IP, + 8 UDP)    ===============
+    // ipHeader.ip_id;         // NO CLUE  ==========
+    // ipHeader.ip_off = 0;    // Fragment offset
+    // ipHeader.ip_src.s_addr; // ================
+    // ipHeader.ip_dst.s_addr; // ================
+
+    // // TFTP Header
+
+
+
+
     
     return 0;
 }

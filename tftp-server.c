@@ -12,7 +12,7 @@
 
 // TODOOOOOOOOOOOOOOOOOO
 
-int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* cesta[]){
+int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* cesta[]){
     /*  
     [] = volitelny
     tftp-server [-p port] root_dirpath
@@ -39,8 +39,8 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* cesta[]
             return 0;
         }
 
-        if(!((*port = atoi(argv[2])) && *port >= 0 && *port < 65354)){       // Je cislo, a v rozsahu 0 - 65353
-            fprintf(stderr, "CHYBA: Zadany port neni cislo, nebo v rozsahu 0 - 65353\n");
+        if(!((*port = atoi(argv[2])) && *port >= 0 && *port < 65536)){       // Je cislo, a v rozsahu 0 - 65353
+            fprintf(stderr, "CHYBA: Zadany port neni cislo, nebo v rozsahu 0 - 65535\n");
             return 0;
         }
     } else {
@@ -56,7 +56,7 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, char* cesta[]
 int main(int argc, char* argv[]){
 
     int port = -1;
-    char* cesta;
+    const char* cesta = NULL;
 
     // Kontrola argumentu
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &cesta)){
