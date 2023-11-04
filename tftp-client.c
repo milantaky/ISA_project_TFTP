@@ -21,6 +21,17 @@ enum{
     ERROR
 } tftp_opcode;
 
+enum{
+    NOT_DEFINED,
+    FILE_NOT_FOUND,
+    ACCESS_VIOLATION,
+    DISK_FULL_OR_ALLOCATION_EXCEEDED,
+    ILLEGAL_TFTP_OPERATION,
+    UNKNOWN_TRANSFER_ID,
+    FILE_ALREADY_EXISTS,
+    NO_SUCH_USER
+} tftp_error_code;
+
 int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* hostname[], const char* filepath[], const char* dest_filepath[]){
     /*  
     [] = volitelny
@@ -128,20 +139,41 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* h
     return 1;
 }
 
+// Naplni RRQ/WRQ packet
+void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], int opcode){
+    rrq_packet[0] = '0';
+    int last_id = 2;
+    
+    if(opcode == 1){
+        rrq_packet[1] = '1';
 
+        for(int i = 0; i < (int) strlen(filepath); i++){
+            rrq_packet[last_id + i] = filepath[i];
+        }
 
+        last_id += (int) strlen(filepath);
+    } else {
+        rrq_packet[1] = '2';
+        char x[] = "stdin";
 
+        for(int i = 0; i < (int) strlen(x); i++){
+            rrq_packet[last_id + i] = x[i];
+        }
+
+        last_id = 7;
+    }
+
+    rrq_packet[last_id++] = '\0';
+    
+    for(int i = 0; i < (int) strlen(mode); i++){
+        rrq_packet[last_id + i] = mode[i];
+    }
+    
+    last_id += strlen(mode);
+    rrq_packet[last_id] = '\0';
+}
 
 //===============================================================================================================================
-
-/*
-    TODO
-    - zkontrolovat/prelozit hostname -> ip, DNS
-
-
-
-
-*/
 
 // struct tftpPacket {
 //     struct ip      ip_header;
@@ -156,14 +188,34 @@ int main(int argc, char* argv[]){
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
+    char mode[] = "octet";
     uint16_t opcode = 0;
-    //FILE *file;
 
-    // Kontrola argumentu (Chyba vypsana ve funkci)
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
 
     // Pokud neni nastaven filepath, pouziva se obsah z stdin (upload - 2 (WRQ)), jinak download - 1 (RRQ)
-    opcode = (!filepath) ? 2 : 1;
+    int rrq_length;
+    if(!filepath){  
+        opcode = 2;
+        rrq_length = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
+    } else {
+        opcode = 1;
+        rrq_length = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
+    }
+
+    char rrq_packet[rrq_length];
+    naplnRequestPacket(rrq_packet, filepath, mode, opcode);
+
+    // vypise obsah packetu
+    // for(int i = 0; i < rrq_length; i++){
+    //     if(rrq_packet[i] == '\0'){
+    //         printf("X");
+    //     } else {
+    //         printf("%c", rrq_packet[i]);
+    //     }
+    // }
+    // printf("\n");
+
 
     printf("PORT: %d\n", port);
 
@@ -171,32 +223,29 @@ int main(int argc, char* argv[]){
         printf("READ\n");
     } else {
         printf("WRITE\n");
-        //file = stdin;
     }
 
-
-
 // ============= Ziskani IP adres
-    // client
-    char buffer[1024];
+    // CLIENT
+    char clientHostname[1024];
     struct hostent *client;
     char *clientIP;
 
-    if (gethostname(buffer, sizeof(buffer)) == 0) { // Ziskej info o hostovi
-        client = gethostbyname(buffer);
+    if (gethostname(clientHostname, sizeof(clientHostname)) == 0) { // Ziskej info o hostovi
+        client = gethostbyname(clientHostname);
 
         if (client != NULL) { // Preved na IP
             clientIP = inet_ntoa(*((struct in_addr*) client->h_addr_list[0]));
-            printf("Host name: %s\n", buffer);
+            printf("Host name: %s\n", clientHostname);
             printf("Moje IP: %s\n", clientIP);
         }
     } else {
-        fprintf(stderr, "CHYBA pri ziskavani IP adresy klienta");
+        fprintf(stderr, "CHYBA pri ziskavani IP adresy klienta\n");
         return 1;
     }
 
 
-    // server - (funguje pro hostname, i pro adresu)
+    // SERVER - (funguje pro hostname, i pro adresu)
     struct hostent *server;
     char *serverIP;
 
@@ -207,8 +256,6 @@ int main(int argc, char* argv[]){
         printf("Server IP: %s\n", serverIP);
     }
 
-
-    // mac - interface en0
 
     /*
     POSTUP:
@@ -222,10 +269,14 @@ int main(int argc, char* argv[]){
         8. udelat dalsi a poslat
     */
 
+    // Vygeneruje si TID (rozsah 0 - 65535) , to zadat jako source a destination 69 (108 octal) v requestu 
+    srand(time(NULL));
+    int clientTID = rand() % 65536;
+
     // // UDP Header
     // struct udphdr udpHeader;
-    // udpHeader.uh_sport = 55550;         // Source port
-    // udpHeader.uh_dport = port;         // Destination port
+    // udpHeader.uh_sport = clientTID;       // Source port
+    // udpHeader.uh_dport = port;            // Destination port
     // udpHeader.uh_ulen;          // Lenght -> Pocet bytu v UDP packetu + 8 (UDP header)
     // udpHeader.uh_sum = 0;       // 0 if unused
 
@@ -238,16 +289,29 @@ int main(int argc, char* argv[]){
     // ipHeader.ip_sum = 0;    // Checksum - zatim 0   ==========
     // ipHeader.ip_tos;        // Type of Service - NO FUCKING IDEA    =============
     // ipHeader.ip_ttl = 64;   // Time To Live - 64 bylo ve wiresharku, idk
-    // ipHeader.ip_len;        // Komplet delka TFTP (+ 20 IP, + 8 UDP)    ===============
+    // ipHeader.ip_len;        // Komplet delka TFTP (+ 20 IP, + 8 UDP) (udpHeader.uh_ulen + 20)   ===============
     // ipHeader.ip_id;         // NO CLUE  ==========
     // ipHeader.ip_off = 0;    // Fragment offset
-    // ipHeader.ip_src.s_addr; // ================
-    // ipHeader.ip_dst.s_addr; // ================
+    // ipHeader.ip_src.s_addr = clientIP; // ================
+    // ipHeader.ip_dst.s_addr = serverIP; // ================
 
     // // TFTP Header
 
 
 
+
+    // // SOCKETY
+    // int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    // if(sockfd < 0){
+    //     fprintf(stderr, "CHYBA pri otevirani socketu.\n");
+    //     return 1;
+    // }
     
+    // // mac - interface en0
+
+    // //send(new_socket, hello, strlen(hello), 0);
+
+    // close(sockfd);
     return 0;
 }
