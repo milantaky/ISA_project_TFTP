@@ -11,7 +11,15 @@
 #include <pcap/pcap.h>
 #include <arpa/inet.h>          // htons
 #include <net/ethernet.h>       // ???
+#include <unistd.h>
 
+enum{
+    RRQ = 1,
+    WRQ,
+    DATA,
+    ACK,
+    ERROR
+} tftp_opcode;
 
 int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* hostname[], const char* filepath[], const char* dest_filepath[]){
     /*  
@@ -120,6 +128,10 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* h
     return 1;
 }
 
+
+
+
+
 //===============================================================================================================================
 
 /*
@@ -145,6 +157,7 @@ int main(int argc, char* argv[]){
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
     uint16_t opcode = 0;
+    //FILE *file;
 
     // Kontrola argumentu (Chyba vypsana ve funkci)
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
@@ -152,24 +165,61 @@ int main(int argc, char* argv[]){
     // Pokud neni nastaven filepath, pouziva se obsah z stdin (upload - 2 (WRQ)), jinak download - 1 (RRQ)
     opcode = (!filepath) ? 2 : 1;
 
+    printf("PORT: %d\n", port);
+
     if(opcode == 1){
         printf("READ\n");
     } else {
         printf("WRITE\n");
+        //file = stdin;
     }
 
 
-    printf("PORT: %d\n", port);
+
+// ============= Ziskani IP adres
+    // client
+    char buffer[1024];
+    struct hostent *client;
+    char *clientIP;
+
+    if (gethostname(buffer, sizeof(buffer)) == 0) { // Ziskej info o hostovi
+        client = gethostbyname(buffer);
+
+        if (client != NULL) { // Preved na IP
+            clientIP = inet_ntoa(*((struct in_addr*) client->h_addr_list[0]));
+            printf("Host name: %s\n", buffer);
+            printf("Moje IP: %s\n", clientIP);
+        }
+    } else {
+        fprintf(stderr, "CHYBA pri ziskavani IP adresy klienta");
+        return 1;
+    }
+
+
+    // server - (funguje pro hostname, i pro adresu)
+    struct hostent *server;
+    char *serverIP;
+
+    server = gethostbyname(hostname);
+
+    if(server != NULL){
+        serverIP = inet_ntoa(*((struct in_addr*) server->h_addr_list[0]));
+        printf("Server IP: %s\n", serverIP);
+    }
+
+
+    // mac - interface en0
 
     /*
     POSTUP:
-        1. vytvorit IP,UDP header
-        2. Pridat k tomu TFTP header
-    
-    
-    
-    
-    
+        1. zjistit IP klienta -- DONE
+        2. Zjistit IP serveru -- DONE
+        3. Sestavit packet
+        4. otevrit handle
+        5. odeslat packet
+        6. cekat na packet zpatky
+        7. zkontrolovat ho
+        8. udelat dalsi a poslat
     */
 
     // // UDP Header
@@ -195,7 +245,6 @@ int main(int argc, char* argv[]){
     // ipHeader.ip_dst.s_addr; // ================
 
     // // TFTP Header
-
 
 
 
