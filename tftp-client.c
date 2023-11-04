@@ -144,7 +144,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
     rrq_packet[0] = '0';
     int last_id = 2;
     
-    if(opcode == 1){
+    if(opcode == 1){                                    // RRQ
         rrq_packet[1] = '1';
 
         for(int i = 0; i < (int) strlen(filepath); i++){
@@ -152,7 +152,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
         }
 
         last_id += (int) strlen(filepath);
-    } else {
+    } else {                                            //WRQ
         rrq_packet[1] = '2';
         char x[] = "stdin";
 
@@ -165,7 +165,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
 
     rrq_packet[last_id++] = '\0';
     
-    for(int i = 0; i < (int) strlen(mode); i++){
+    for(int i = 0; i < (int) strlen(mode); i++){        // Mode
         rrq_packet[last_id + i] = mode[i];
     }
     
@@ -173,14 +173,17 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
     rrq_packet[last_id] = '\0';
 }
 
+void vypisPacket(char packet[], int length){
+    for(int i = 0; i < length; i++){
+        if(packet[i] == '\0'){
+            printf("X");
+        } else {
+            printf("%c", packet[i]);
+        }
+    }
+    printf("\n");
+}
 //===============================================================================================================================
-
-// struct tftpPacket {
-//     struct ip      ip_header;
-//     struct udphdr  udp_header;
-//     //struct tftphdr tftp_header;
-//     char* data;
-// };
 
 int main(int argc, char* argv[]){
 
@@ -188,42 +191,33 @@ int main(int argc, char* argv[]){
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
-    char mode[] = "octet";
-    uint16_t opcode = 0;
+    char mode[] = "netascii";
+    int opcode = 0;
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
 
-    // Pokud neni nastaven filepath, pouziva se obsah z stdin (upload - 2 (WRQ)), jinak download - 1 (RRQ)
-    int rrq_length;
+    // Zjisteni delky packetu podle OPCODE a MODE + napleni
+    int request_length;
     if(!filepath){  
         opcode = 2;
-        rrq_length = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
+        request_length = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
     } else {
         opcode = 1;
-        rrq_length = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
+        request_length = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
     }
 
-    char rrq_packet[rrq_length];
-    naplnRequestPacket(rrq_packet, filepath, mode, opcode);
+    char requestPacket[request_length];
+    naplnRequestPacket(requestPacket, filepath, mode, opcode);
 
     // vypise obsah packetu
-    // for(int i = 0; i < rrq_length; i++){
-    //     if(rrq_packet[i] == '\0'){
-    //         printf("X");
-    //     } else {
-    //         printf("%c", rrq_packet[i]);
-    //     }
-    // }
-    // printf("\n");
-
-
-    printf("PORT: %d\n", port);
+    vypisPacket(requestPacket, request_length);
 
     if(opcode == 1){
         printf("READ\n");
     } else {
         printf("WRITE\n");
     }
+    printf("PORT: %d\n", port);
 
 // ============= Ziskani IP adres
     // CLIENT
@@ -236,7 +230,6 @@ int main(int argc, char* argv[]){
 
         if (client != NULL) { // Preved na IP
             clientIP = inet_ntoa(*((struct in_addr*) client->h_addr_list[0]));
-            printf("Host name: %s\n", clientHostname);
             printf("Moje IP: %s\n", clientIP);
         }
     } else {
@@ -270,8 +263,8 @@ int main(int argc, char* argv[]){
     */
 
     // Vygeneruje si TID (rozsah 0 - 65535) , to zadat jako source a destination 69 (108 octal) v requestu 
-    srand(time(NULL));
-    int clientTID = rand() % 65536;
+    // srand(time(NULL));
+    // int clientTID = rand() % 65536;
 
     // // UDP Header
     // struct udphdr udpHeader;
