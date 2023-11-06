@@ -286,18 +286,16 @@ int main(int argc, char* argv[]){
 
     // CONNECT 
     // Bud connect + send, nebo jen sendto
-    // int connection = connect(sockfd, (struct sockaddr*) &server, sizeof(server));
+    int connection = connect(sockfd, (struct sockaddr*) &server, sizeof(server));
 
-    // if(connection < 0){
-    //     fprintf(stderr, "Nastala CHYBA pri pripoijeni socketu\n");
-    //     return 1;
-    // }
+    if(connection < 0){
+        fprintf(stderr, "Nastala CHYBA pri pripoijeni socketu\n");
+        return 1;
+    }
     
-    // char hello[] = "Hello from clientddddd";
-    // send(sockfd, hello, strlen(hello), 0);
-    // sendto(sockfd, hello, strlen(hello), 0, (struct sockaddr*) &server, sizeof(server));
-    sendto(sockfd, requestPacket, requestLength, 0, (struct sockaddr*) &server, sizeof(server));
-
+    // OODESLANI REQUESTU
+    send(sockfd, requestPacket, requestLength, 0);
+    
     close(sockfd);
     return 0;
 }
