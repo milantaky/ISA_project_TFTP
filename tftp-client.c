@@ -35,7 +35,7 @@ enum{
 int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* hostname[], const char* filepath[], const char* dest_filepath[]){
     /*  
     [] = volitelny
-    ttftp-client -h hostname [-p port] [-f filepath] -t dest_filepath
+    tftp-client -h hostname [-p port] [-f filepath] -t dest_filepath
 
         -h IP adresa/doménový název vzdáleného serveru
         -p port vzdáleného serveru
@@ -45,7 +45,7 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* h
         -t cesta, pod kterou bude soubor na vzdáleném serveru/lokálně uložen      */
 
     if(pocet == 2 && strcmp(argv[1], "--help") == 0){
-        printf("ttftp-client -h hostname [-p port] [-f filepath] -t dest_filepath\n\n-h IP adresa/doménový název vzdáleného serveru\n-p port vzdáleného serveru\npokud není specifikován předpokládá se výchozí dle specifikace\n-f cesta ke stahovanému souboru na serveru (download)\npokud není specifikován používá se obsah stdin (upload)\n-t cesta, pod kterou bude soubor na vzdáleném serveru/lokálně uložen.\n");
+        printf("tftp-client -h hostname [-p port] [-f filepath] -t dest_filepath\n\n-h IP adresa/doménový název vzdáleného serveru\n-p port vzdáleného serveru\npokud není specifikován předpokládá se výchozí dle specifikace\n-f cesta ke stahovanému souboru na serveru (download)\npokud není specifikován používá se obsah stdin (upload)\n-t cesta, pod kterou bude soubor na vzdáleném serveru/lokálně uložen.\n");
         return 0;
     }
     
@@ -141,11 +141,11 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* h
 
 // Naplni RRQ/WRQ packet
 void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], int opcode){
-    rrq_packet[0] = '0';
+    rrq_packet[0] = 0;
     int last_id = 2;
     
     if(opcode == 1){                                    // RRQ
-        rrq_packet[1] = '1';
+        rrq_packet[1] = 1;
 
         for(int i = 0; i < (int) strlen(filepath); i++){
             rrq_packet[last_id + i] = filepath[i];
@@ -153,7 +153,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
 
         last_id += (int) strlen(filepath);
     } else {                                            //WRQ
-        rrq_packet[1] = '2';
+        rrq_packet[1] = 2;
         char x[] = "stdin";
 
         for(int i = 0; i < (int) strlen(x); i++){
@@ -183,53 +183,46 @@ void vypisPacket(char packet[], int length){
     }
     printf("\n");
 }
+
 //===============================================================================================================================
 
 int main(int argc, char* argv[]){
 
-    int port = 69;                      // Pokud neni specifikovan, predpoklada se vychozi dle specifikace (69) -> kdyztak se ve funkci prepise
+    int port                  = 69;                      // Pokud neni specifikovan, predpoklada se vychozi dle specifikace (69) -> kdyztak se ve funkci prepise
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
-    char mode[] = "netascii";
-    int opcode = 0;
+    char mode[]               = "netascii";
+    int opcode                = 0;
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
 
     // Zjisteni delky packetu podle OPCODE a MODE + napleni
-    int request_length;
+    int requestLength;
     if(!filepath){  
         opcode = 2;
-        request_length = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
+        requestLength = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
     } else {
         opcode = 1;
-        request_length = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
+        requestLength = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
     }
 
-    char requestPacket[request_length];
+    char requestPacket[requestLength];
     naplnRequestPacket(requestPacket, filepath, mode, opcode);
 
-    // vypise obsah packetu
-    vypisPacket(requestPacket, request_length);
-
-    if(opcode == 1){
-        printf("READ\n");
-    } else {
-        printf("WRITE\n");
-    }
-    printf("PORT: %d\n", port);
+    // vypisPacket(requestPacket, requestLength);  
 
 // ============= Ziskani IP adres
     // CLIENT
     char clientHostname[1024];
-    struct hostent *client;
+    struct hostent *clientHost;
     char *clientIP;
 
     if (gethostname(clientHostname, sizeof(clientHostname)) == 0) { // Ziskej info o hostovi
-        client = gethostbyname(clientHostname);
+        clientHost = gethostbyname(clientHostname);
 
-        if (client != NULL) { // Preved na IP
-            clientIP = inet_ntoa(*((struct in_addr*) client->h_addr_list[0]));
+        if (clientHost != NULL) { // Preved na IP
+            clientIP = inet_ntoa(*((struct in_addr*) clientHost->h_addr_list[0]));
             printf("Moje IP: %s\n", clientIP);
         }
     } else {
@@ -237,74 +230,74 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-
     // SERVER - (funguje pro hostname, i pro adresu)
-    struct hostent *server;
+    struct hostent *serverHostname;
     char *serverIP;
 
-    server = gethostbyname(hostname);
+    serverHostname = gethostbyname(hostname);
 
-    if(server != NULL){
-        serverIP = inet_ntoa(*((struct in_addr*) server->h_addr_list[0]));
+    if(serverHostname != NULL){
+        serverIP = inet_ntoa(*((struct in_addr*) serverHostname->h_addr_list[0]));
         printf("Server IP: %s\n", serverIP);
     }
 
-
     /*
     POSTUP:
-        1. zjistit IP klienta -- DONE
-        2. Zjistit IP serveru -- DONE
-        3. Sestavit packet
-        4. otevrit handle
-        5. odeslat packet
+        1. zjistit IP klienta           -- DONE
+        2. Zjistit IP serveru           -- DONE
+        
+        3. Sestavit packet - REQUEST    -- DONE
+        5. odeslat packet               -- DONE
         6. cekat na packet zpatky
         7. zkontrolovat ho
         8. udelat dalsi a poslat
     */
 
     // Vygeneruje si TID (rozsah 0 - 65535) , to zadat jako source a destination 69 (108 octal) v requestu 
-    // srand(time(NULL));
-    // int clientTID = rand() % 65536;
+    srand(time(NULL));
+    int clientTID = rand() % 65536;
+    printf("TID = %d\n", clientTID);
 
-    // // UDP Header
-    // struct udphdr udpHeader;
-    // udpHeader.uh_sport = clientTID;       // Source port
-    // udpHeader.uh_dport = port;            // Destination port
-    // udpHeader.uh_ulen;          // Lenght -> Pocet bytu v UDP packetu + 8 (UDP header)
-    // udpHeader.uh_sum = 0;       // 0 if unused
+    struct sockaddr_in client;
+    client.sin_family      = AF_INET;
+    client.sin_port        = htons(clientTID);
+    inet_aton(clientIP, &client.sin_addr);
 
-    // // IPv4 Header
-    // ========= znamena dodelat
-    // struct ip ipHeader;
-    // ipHeader.ip_hl = 5;     // Header length
-    // ipHeader.ip_v = 4;      // Version (IPv4)
-    // ipHeader.ip_p = IPPROTO_UDP;    // Protokol
-    // ipHeader.ip_sum = 0;    // Checksum - zatim 0   ==========
-    // ipHeader.ip_tos;        // Type of Service - NO FUCKING IDEA    =============
-    // ipHeader.ip_ttl = 64;   // Time To Live - 64 bylo ve wiresharku, idk
-    // ipHeader.ip_len;        // Komplet delka TFTP (+ 20 IP, + 8 UDP) (udpHeader.uh_ulen + 20)   ===============
-    // ipHeader.ip_id;         // NO CLUE  ==========
-    // ipHeader.ip_off = 0;    // Fragment offset
-    // ipHeader.ip_src.s_addr = clientIP; // ================
-    // ipHeader.ip_dst.s_addr = serverIP; // ================
+    struct sockaddr_in server;
+    server.sin_family      = AF_INET;
+    server.sin_port        = htons(port);
+    // inet_aton(serverIP, &server.sin_addr);
+    inet_aton(serverIP, &client.sin_addr);              // Zatim si to posilam sam na sebe
 
-    // // TFTP Header
+    
+    // printf("PORT: %d\n", (int) server.sin_port);
 
+    // // mac - interface en0
 
+    // SOCKETY
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
+    if(sockfd < 0){
+        fprintf(stderr, "Nastala CHYBA pri otevirani socketu.\n");
+        return 1;
+    }
 
-    // // SOCKETY
-    // int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    // BIND je jen u serveru
 
-    // if(sockfd < 0){
-    //     fprintf(stderr, "CHYBA pri otevirani socketu.\n");
+    // CONNECT 
+    // Bud connect + send, nebo jen sendto
+    // int connection = connect(sockfd, (struct sockaddr*) &server, sizeof(server));
+
+    // if(connection < 0){
+    //     fprintf(stderr, "Nastala CHYBA pri pripoijeni socketu\n");
     //     return 1;
     // }
     
-    // // mac - interface en0
+    // char hello[] = "Hello from clientddddd";
+    // send(sockfd, hello, strlen(hello), 0);
+    // sendto(sockfd, hello, strlen(hello), 0, (struct sockaddr*) &server, sizeof(server));
+    sendto(sockfd, requestPacket, requestLength, 0, (struct sockaddr*) &server, sizeof(server));
 
-    // //send(new_socket, hello, strlen(hello), 0);
-
-    // close(sockfd);
+    close(sockfd);
     return 0;
 }

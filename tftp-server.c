@@ -83,16 +83,13 @@ int main(int argc, char* argv[]){
 
     printf("port: %d\ncesta: %s\n", port, cesta);
     
-    // sehnat adresu serveru
     // handle bude poslouchat na en0/eth0 asi s filtrem kde je adresa serveru
-    // pak se to zpracuje
 
     // zatim asi chytat ve while !interrupt (C^c) ve dvou terminalech
+    
+    
+    
     // SOCKETY
-
-    // RANDOM TID asi pada, kdyz chteji port ne????????
-
-
     // int sockfd = socket(AF_INET, SOCK_DGRAM, 0);    // AF_INET = IPv4, SOCK_DGRAM = UDP, 0 = IP protocol
     
     // if(sockfd < 0){
@@ -101,7 +98,10 @@ int main(int argc, char* argv[]){
     // }
 
 
-    // // SOCK BIND
+    // SOCK BIND
+
+
+
     // // LISTEN
     // // new socket = accept
     // // send(new_socket, hello, strlen(hello), 0);
