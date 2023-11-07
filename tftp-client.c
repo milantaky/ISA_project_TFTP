@@ -5,13 +5,20 @@
 #include <netinet/in.h>      
 #include <netinet/ip.h>       
 #include <netinet/udp.h>      
-// #include <errno.h>           // ???
+#include <errno.h>           // ???
 #include <signal.h>             // interrupt
 #include <time.h>               // na timeout?
 #include <pcap/pcap.h>
 #include <arpa/inet.h>          // htons
 #include <net/ethernet.h>       // ???
 #include <unistd.h>
+
+#define MAX_BUFFER_SIZE 1024
+
+// int interrupt = 0;
+// void intHandler() {
+//     interrupt = 1;
+// }
 
 enum{
     RRQ = 1,
@@ -186,8 +193,11 @@ void vypisPacket(char packet[], int length){
 
 //===============================================================================================================================
 
-int main(int argc, char* argv[]){
+// TODO: vyresit bind na source port
 
+int main(int argc, char* argv[]){
+    
+    //signal(SIGINT, intHandler);
     int port                  = 69;                      // Pokud neni specifikovan, predpoklada se vychozi dle specifikace (69) -> kdyztak se ve funkci prepise
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
@@ -214,7 +224,7 @@ int main(int argc, char* argv[]){
 
 // ============= Ziskani IP adres
     // CLIENT
-    char clientHostname[1024];
+    char clientHostname[100];
     struct hostent *clientHost;
     char *clientIP;
 
@@ -266,9 +276,8 @@ int main(int argc, char* argv[]){
     struct sockaddr_in server;
     server.sin_family      = AF_INET;
     server.sin_port        = htons(port);
-    // inet_aton(serverIP, &server.sin_addr);
-    inet_aton(serverIP, &client.sin_addr);              // Zatim si to posilam sam na sebe
-
+    inet_aton(serverIP, &server.sin_addr);
+    // inet_aton(serverIP, &client.sin_addr);              // Zatim si to posilam sam na sebe
     
     // printf("PORT: %d\n", (int) server.sin_port);
 
@@ -282,20 +291,35 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    // BIND je jen u serveru
+    // BIND - kvuli source portu
+    // if(bind(sockfd, (struct sockaddr*) &client, sizeof(client)) < 0){
+    //     fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
+    //     close(sockfd);
+    //     return 1;
+    // }
 
     // CONNECT 
     // Bud connect + send, nebo jen sendto
-    int connection = connect(sockfd, (struct sockaddr*) &server, sizeof(server));
+    // int connection = connect(sockfd, (struct sockaddr*) &server, sizeof(server));
 
-    if(connection < 0){
-        fprintf(stderr, "Nastala CHYBA pri pripoijeni socketu\n");
-        return 1;
-    }
+    // if(connection < 0){
+    //     fprintf(stderr, "Nastala CHYBA pri pripoijeni socketu\n");
+    //     close(sockfd);
+    //     return 1;
+    // }
     
     // OODESLANI REQUESTU
-    send(sockfd, requestPacket, requestLength, 0);
+    // send(sockfd, requestPacket, requestLength, 0);
+    int bytesSent;
+    bytesSent = sendto(sockfd, requestPacket, requestLength, 0, (struct sockaddr*) &server, sizeof(server));
     
+    if(bytesSent == -1){
+        fprintf(stderr, "Nastala CHYBA pri posilani packetu.\n");
+        close(sockfd);
+        return 1;
+    }
+
+
     close(sockfd);
     return 0;
 }

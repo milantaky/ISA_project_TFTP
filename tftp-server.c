@@ -2,13 +2,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>         // sockets duh
-#include <netinet/in.h>         // ???
-// #include <errno.h>           // ???
+#include <netinet/in.h>      
+#include <netinet/ip.h>       
+#include <netinet/udp.h>      
+#include <errno.h>           // ???
 #include <signal.h>             // interrupt
 #include <time.h>               // na timeout?
 #include <pcap/pcap.h>
 #include <arpa/inet.h>          // htons
 #include <net/ethernet.h>       // ???
+#include <unistd.h>
+
+#define MAX_BUFFER_SIZE 1024
+
+// int interrupt = 0;
+// void intHandler() {
+//     interrupt = 1;
+// }
+
 
 enum{
     RRQ = 1,
@@ -73,8 +84,11 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* c
 
 int main(int argc, char* argv[]){
 
+    //signal(SIGINT, intHandler);
     int port = 69;                  // Defaultne posloucha tady
     const char* cesta = NULL;
+    char buffer[MAX_BUFFER_SIZE];              // !!!!!!!! Zatim 1024
+    memset(buffer, 0 , MAX_BUFFER_SIZE);       // Vynuluje buffer
 
     // Kontrola argumentu
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &cesta)){
@@ -84,28 +98,87 @@ int main(int argc, char* argv[]){
     printf("port: %d\ncesta: %s\n", port, cesta);
     
     // handle bude poslouchat na en0/eth0 asi s filtrem kde je adresa serveru
+    
 
-    // zatim asi chytat ve while !interrupt (C^c) ve dvou terminalech
-    
-    
-    
+    struct sockaddr_in server, client;
+    server.sin_family        = AF_INET;
+    server.sin_port          = htons(port);
+    server.sin_addr.s_addr   = INADDR_ANY;
+
+    // printf("PORTTTTTT: %d\n", (int) server.sin_port);
+
+    // char ipStr[INET_ADDRSTRLEN];
+    // if (inet_ntop(AF_INET, &(server.sin_addr), ipStr, sizeof(ipStr)) != NULL) {
+    //     printf("IP Address: %s\n", ipStr);
+    // } else {
+    //     printf("inet_ntop");
+    // }
+
+    int readBytes;
+
+    // fork() ??? pak upravit listen na delsi frontu nez 1
+
     // SOCKETY
-    // int sockfd = socket(AF_INET, SOCK_DGRAM, 0);    // AF_INET = IPv4, SOCK_DGRAM = UDP, 0 = IP protocol
-    
-    // if(sockfd < 0){
-    //     fprintf(stderr, "CHYBA pri otevirani socketu.\n");
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);    // AF_INET = IPv4, SOCK_DGRAM = UDP, 0 = IP protocol
+
+    if(sockfd < 0){
+        fprintf(stderr, "CHYBA pri otevirani socketu.\n");
+        return 1;
+    }
+
+    // SOCKET BIND
+    if(bind(sockfd, (struct sockaddr*) &server, sizeof(server)) < 0){
+        fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
+        close(sockfd);
+        return 1;
+    }
+
+    // LISTEN
+    // if(listen(sockfd, 3) < 0){
+    //     fprintf(stderr, "Nastala CHYBA pri cekani na klienta. %s\n", strerror(errno));
+    //     close(sockfd);
     //     return 1;
     // }
 
+    // ACCEPT
+    //int clientSock;
+    // socklen_t serverAddressLength = sizeof(server);
+    socklen_t clientAddressLength = sizeof(client);
 
-    // SOCK BIND
+    // if((clientSock = accept(sockfd, (struct sockaddr*) &server, &serverAddressLength)) < 0){
+    //     fprintf(stderr, "Nastala CHYBA pri prijimani klienta. %s\n", strerror(errno));
+    //     close(sockfd);
+    //     return 1;
+    // }
 
+    // CTENI
+    
+    printf("Cekam na klienta...\n");
 
+    while(1){
+        // readBytes = recvfrom(clientSock, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &client, &clientAddressLength);
+        readBytes = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &client, &clientAddressLength);
 
-    // // LISTEN
-    // // new socket = accept
+        if(readBytes == -1){
+            fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+            close(sockfd);
+            return 1; 
+        }
+
+        printf("%x%x", buffer[0], buffer[1]);
+        for(int i = 2; i < readBytes; i++){
+            if(buffer[i] == '\n'){
+                printf("X");
+            } else {
+                printf("%c", buffer[i]);
+            }
+        }
+        printf("\n");
+        break;
+    }
+
     // // send(new_socket, hello, strlen(hello), 0);
-
-    // close(sockfd);
+    //close(clientSock);
+    close(sockfd);
     return 0;
 }
