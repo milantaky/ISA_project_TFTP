@@ -141,7 +141,6 @@ void nactiLokaci(char buffer[], char *dest[]){
     lokace[j] = '\0';
     
     *dest = strdup(lokace);
-    // *dest = lokace;
 }
 
 int posliErrorPacket(int sockfd, struct sockaddr_in client, int errorCode, char message[]){
@@ -171,7 +170,29 @@ int posliErrorPacket(int sockfd, struct sockaddr_in client, int errorCode, char 
     return 1;
 }
 
+int posliACK(int sockfd, struct sockaddr_in client, int blockNumber){
+    char ack[4];
+
+    ack[0] = 0;
+    ack[1] = 4;
+    ack[2] = blockNumber >> 8;
+    ack[3] = blockNumber;
+    
+    // Posilani
+    int bytesSent;
+    bytesSent = sendto(sockfd, ack, 4, 0, (struct sockaddr*) &client, sizeof(client));
+    
+    if(bytesSent == -1){
+        fprintf(stderr, "Nastala CHYBA pri posilani packetu.\n");
+        return 0;
+    }
+
+    printf("OOOOOOOOOODESLANO\n");
+    return 1;
+}
+
 //===============================================================================================================================
+// ./tftp-server /svdsvsdvsdvsdv
 
 int main(int argc, char* argv[]){
 
@@ -181,20 +202,13 @@ int main(int argc, char* argv[]){
 
     // Kontrola argumentu
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &cesta)){
-        return 1;     // Chyba vypsana ve funkci
+        return 1;    
     }
-
-    printf("port: %d\ncesta: %s\n", port, cesta);
-    
-    // handle bude poslouchat na en0/eth0 asi s filtrem kde je adresa serveru
-    
 
     struct sockaddr_in server, client;
     server.sin_family        = AF_INET;
     server.sin_port          = htons(port);
     server.sin_addr.s_addr   = INADDR_ANY;
-
-    int readBytes;
 
     // fork() ??? pak upravit listen na delsi frontu nez 1
 
@@ -221,11 +235,12 @@ int main(int argc, char* argv[]){
     char sendBuffer[MAX_BUFFER_SIZE];       
     memset(buffer, 0 , MAX_BUFFER_SIZE);            // Vynuluje buffer
     memset(sendBuffer, 0 , MAX_BUFFER_SIZE);        // Vynuluje buffer
-    //int blockNumber = 0;
+    int blockNumber = 0;
     int mode = 0;                                   // 1 = netascii, 2 = octet
     int offset;
     char *location = NULL;                          // cesta kam se budou ukladat soubory / odkud se budou cist -> zalezi na mode
 
+    int readBytes;
     readBytes = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &client, &clientAddressLength);
 
     if(readBytes == -1){
@@ -234,9 +249,10 @@ int main(int argc, char* argv[]){
         return 1; 
     } 
     else {                                  // ZPRACOVANI REQUESTU
-        if(buffer[0] != 0){                 // Spatny packet
-            fprintf(stderr, "CHYBA: Obdrzeny packet neni TFTP packet.\n");
-            posliErrorPacket(sockfd, client, 0, "Obdrzeny packet neni TFTP packet.");
+        if(buffer[0] != 0){                
+            fprintf(stderr, "CHYBA: Chybny TFTP packet.\n");
+            posliErrorPacket(sockfd, client, 0, "Chybny TFTP packet.");
+            close(sockfd);
             return 1;
         } 
         else {
@@ -246,25 +262,25 @@ int main(int argc, char* argv[]){
             offset = 3 + (int) strlen(location);            // 2 kvuli opcode a 1 je \0 za lokaci
             free(location);
 
-            if(!(mode = zkontrolujMode(buffer, offset))){     
-                printf("%d\n", mode);                               
+            if(!(mode = zkontrolujMode(buffer, offset))){                    
                 fprintf(stderr, "CHYBA: Spatny mode requestu. Zvolte pouze netascii/octet.\n");
-                posliErrorPacket(sockfd, client, 0, "Spatny request mode");
+                posliErrorPacket(sockfd, client, 0, "Spatny request mode.");
+                close(sockfd);
                 return 1;
             }
 
-            if(buffer[1] == 1){             // READ
+            if(buffer[1] == 1){                 // READ
                 printf("dostal jsem packet pro cteni\n");
-
+                posliACK(sockfd, client, 65535);
             } 
-            else if(buffer[1] == 2){         // WRITE
+            else if(buffer[1] == 2){            // WRITE
                 printf("dostal jsem packet pro zapis\n");
                 
-
-
-            } else {
+            } 
+            else {
                 fprintf(stderr, "CHYBA: Nejprve je potreba zaslat request packet.\n");
                 posliErrorPacket(sockfd, client, 0, "Nejprve je potreba zaslat request packet.");
+                close(sockfd);
                 return 1;
             }
         }
@@ -289,7 +305,7 @@ int main(int argc, char* argv[]){
     // }
 
     // Accept request -> write = ACK a block number = 0
-    //                ->  read = ACK a prvni blok dat
+    //                ->  read = prvni blok dat
 
 
     close(sockfd);
