@@ -150,7 +150,7 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* h
 // Naplni RRQ/WRQ packet
 void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], int opcode){
     rrq_packet[0] = 0;
-    int last_id = 2;
+    int last_id = 3;
     
     if(opcode == 1){                                    // RRQ
         rrq_packet[1] = 1;
@@ -201,7 +201,7 @@ int main(int argc, char* argv[]){
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
-    char mode[]               = "netascii";
+    char mode[]               = "Octt";
     int opcode                = 0;
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
@@ -302,6 +302,21 @@ int main(int argc, char* argv[]){
         close(sockfd);
         return 1;
     }
+
+
+    // Prijimuti -- funguje!!!!!!!!!
+    // char buffer[MAX_BUFFER_SIZE];
+    // memset(buffer, 0 , MAX_BUFFER_SIZE);            // Vynuluje buffer
+    // socklen_t serverAddressLength = sizeof(server);
+    // int readBytes = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &server, &serverAddressLength);
+
+    // if(readBytes == -1){
+    //     fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+    //     close(sockfd);
+    //     return 1; 
+    // } else {
+    //     printf("chytil jsem\n");
+    // }
 
     // while(!interrupt){
 
