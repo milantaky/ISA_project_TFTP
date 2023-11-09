@@ -15,10 +15,7 @@
 
 #define MAX_BUFFER_SIZE 1024
 
-// int interrupt = 0;
-// void intHandler() {
-//     interrupt = 1;
-// }
+int interrupt = 0;
 
 
 enum{
@@ -39,6 +36,11 @@ enum{
     FILE_ALREADY_EXISTS,
     NO_SUCH_USER
 } tftp_error_code;
+
+void intHandler(int signum) {
+    (void)signum;       // Musi to byt takhle, jinak compiler nadava
+    interrupt = 1;
+}
 
 int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* cesta[]){
     /*  
@@ -107,13 +109,6 @@ int main(int argc, char* argv[]){
 
     // printf("PORTTTTTT: %d\n", (int) server.sin_port);
 
-    // char ipStr[INET_ADDRSTRLEN];
-    // if (inet_ntop(AF_INET, &(server.sin_addr), ipStr, sizeof(ipStr)) != NULL) {
-    //     printf("IP Address: %s\n", ipStr);
-    // } else {
-    //     printf("inet_ntop");
-    // }
-
     int readBytes;
 
     // fork() ??? pak upravit listen na delsi frontu nez 1
@@ -133,30 +128,13 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    // LISTEN
-    // if(listen(sockfd, 3) < 0){
-    //     fprintf(stderr, "Nastala CHYBA pri cekani na klienta. %s\n", strerror(errno));
-    //     close(sockfd);
-    //     return 1;
-    // }
-
-    // ACCEPT
-    //int clientSock;
-    // socklen_t serverAddressLength = sizeof(server);
     socklen_t clientAddressLength = sizeof(client);
-
-    // if((clientSock = accept(sockfd, (struct sockaddr*) &server, &serverAddressLength)) < 0){
-    //     fprintf(stderr, "Nastala CHYBA pri prijimani klienta. %s\n", strerror(errno));
-    //     close(sockfd);
-    //     return 1;
-    // }
 
     // CTENI
     
     printf("Cekam na klienta...\n");
 
-    while(1){
-        // readBytes = recvfrom(clientSock, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &client, &clientAddressLength);
+    while(!interrupt){
         readBytes = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &client, &clientAddressLength);
 
         if(readBytes == -1){
@@ -174,11 +152,9 @@ int main(int argc, char* argv[]){
             }
         }
         printf("\n");
-        break;
+        // break;
     }
 
-    // // send(new_socket, hello, strlen(hello), 0);
-    //close(clientSock);
     close(sockfd);
     return 0;
 }

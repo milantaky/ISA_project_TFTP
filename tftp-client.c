@@ -14,11 +14,7 @@
 #include <unistd.h>
 
 #define MAX_BUFFER_SIZE 1024
-
-// int interrupt = 0;
-// void intHandler() {
-//     interrupt = 1;
-// }
+int interrupt = 0;
 
 enum{
     RRQ = 1,
@@ -38,6 +34,11 @@ enum{
     FILE_ALREADY_EXISTS,
     NO_SUCH_USER
 } tftp_error_code;
+
+void intHandler(int signum) {
+    (void)signum;   // musi to byt takhle, jinak compiler nadava
+    interrupt = 1;
+}
 
 int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* hostname[], const char* filepath[], const char* dest_filepath[]){
     /*  
@@ -193,11 +194,9 @@ void vypisPacket(char packet[], int length){
 
 //===============================================================================================================================
 
-// TODO: vyresit bind na source port
-
 int main(int argc, char* argv[]){
     
-    //signal(SIGINT, intHandler);
+    signal(SIGINT, intHandler);
     int port                  = 69;                      // Pokud neni specifikovan, predpoklada se vychozi dle specifikace (69) -> kdyztak se ve funkci prepise
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
@@ -277,39 +276,24 @@ int main(int argc, char* argv[]){
     server.sin_family      = AF_INET;
     server.sin_port        = htons(port);
     inet_aton(serverIP, &server.sin_addr);
-    // inet_aton(serverIP, &client.sin_addr);              // Zatim si to posilam sam na sebe
-    
-    // printf("PORT: %d\n", (int) server.sin_port);
 
     // // mac - interface en0
 
     // SOCKETY
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-
     if(sockfd < 0){
         fprintf(stderr, "Nastala CHYBA pri otevirani socketu.\n");
         return 1;
     }
 
     // BIND - kvuli source portu
-    // if(bind(sockfd, (struct sockaddr*) &client, sizeof(client)) < 0){
-    //     fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
-    //     close(sockfd);
-    //     return 1;
-    // }
+    if (bind(sockfd, (struct sockaddr*)&client, sizeof(client)) < 0) {
+        fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
+        close(sockfd);
+    return 1;
+}
 
-    // CONNECT 
-    // Bud connect + send, nebo jen sendto
-    // int connection = connect(sockfd, (struct sockaddr*) &server, sizeof(server));
-
-    // if(connection < 0){
-    //     fprintf(stderr, "Nastala CHYBA pri pripoijeni socketu\n");
-    //     close(sockfd);
-    //     return 1;
-    // }
-    
     // OODESLANI REQUESTU
-    // send(sockfd, requestPacket, requestLength, 0);
     int bytesSent;
     bytesSent = sendto(sockfd, requestPacket, requestLength, 0, (struct sockaddr*) &server, sizeof(server));
     
@@ -319,7 +303,9 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
+    // while(!interrupt){
 
+    // }
     close(sockfd);
     return 0;
 }
