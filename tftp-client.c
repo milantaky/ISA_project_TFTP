@@ -12,34 +12,21 @@
 #include <arpa/inet.h>          // htons
 #include <net/ethernet.h>       // ???
 #include <unistd.h>
+#include <ctype.h>
+
 
 #define MAX_BUFFER_SIZE 1024
+#define MAX_DATA_SIZE 512
+
 int interrupt = 0;
 
-enum{
-    RRQ = 1,
-    WRQ,
-    DATA,
-    ACK,
-    ERROR
-} tftp_opcode;
-
-enum{
-    NOT_DEFINED,
-    FILE_NOT_FOUND,
-    ACCESS_VIOLATION,
-    DISK_FULL_OR_ALLOCATION_EXCEEDED,
-    ILLEGAL_TFTP_OPERATION,
-    UNKNOWN_TRANSFER_ID,
-    FILE_ALREADY_EXISTS,
-    NO_SUCH_USER
-} tftp_error_code;
-
+// Zpracovani interruptu
 void intHandler(int signum) {
     (void)signum;   // musi to byt takhle, jinak compiler nadava
     interrupt = 1;
 }
 
+// Zkontroluje a nastavi argumenty -> duh
 int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* hostname[], const char* filepath[], const char* dest_filepath[]){
     /*  
     [] = volitelny
@@ -147,6 +134,15 @@ int zkontrolujANastavArgumenty(int pocet, char* argv[], int* port, const char* h
     return 1;
 }
 
+// Prevede cely string na lowercase 
+char toLowerString(char string[]){
+    for(int i = 0; i < (int) strlen(string); i++){
+        string[i] = tolower(string[i]);
+    }
+    
+    return *string;
+}
+
 // Naplni RRQ/WRQ packet
 void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], int opcode){
     rrq_packet[0] = 0;
@@ -181,6 +177,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
     rrq_packet[last_id] = '\0';
 }
 
+// Vypise obsah packetu
 void vypisPacket(char packet[], int length){
     for(int i = 0; i < length; i++){
         if(packet[i] == '\0'){
@@ -192,9 +189,164 @@ void vypisPacket(char packet[], int length){
     printf("\n");
 }
 
-//===============================================================================================================================
-// ./tftp-client -h 127.0.0.1 -f HelloServer -t /vsdvsdvsdvs
+// Vypise chybovou zpravu ve tvaru ERROR {SRC_IP}:{SRC_PORT}:{DST_PORT} {CODE} "{MESSAGE}"
+void vypisError(char buffer[], struct sockaddr_in client, struct sockaddr_in server){
 
+    // Dalo by se to i vlozit do fprintf, ale takhle je to prehlednejsi
+    char *srcIP  = inet_ntoa(server.sin_addr);
+    int srcPort = ntohs(server.sin_port); 
+    int dstPort = ntohs(client.sin_port); 
+    int code = (int) buffer[3];
+    char message[256];
+    strcpy(message, buffer + 4);
+
+    fprintf(stderr, "ERROR %s:%d:%d %d \"%s\"\n", srcIP, srcPort, dstPort, code, message);
+}
+
+// Odesle packet
+int posliPacket(int sockfd, char buffer[], int size, struct sockaddr_in server){
+    int bytesSent;
+    bytesSent = sendto(sockfd, buffer, size, 0, (struct sockaddr*) &server, sizeof(server));
+
+   if(bytesSent == -1){                                   
+        fprintf(stderr, "Nastala CHYBA pri posilani packetu.\n");
+        close(sockfd);
+        return 0;
+    } 
+
+    return 1;
+}
+
+// Posle ACK packet
+int posliACK(int sockfd, struct sockaddr_in server, int blockNumber){
+    char ack[4];
+
+    ack[0] = 0;
+    ack[1] = 4;
+    ack[2] = blockNumber >> 8;
+    ack[3] = blockNumber;
+
+    if(!posliPacket(sockfd, ack, 4, server)){
+        return 0;
+    }
+
+    return 1;
+}
+
+// Vypise zpravu ve tvaru ACK {SRC_IP}:{SRC_PORT} {BLOCK_ID}
+void vypisACK(struct sockaddr_in server, int blockID){
+
+    char *srcIP  = inet_ntoa(server.sin_addr);
+    int srcPort = ntohs(server.sin_port); 
+
+    fprintf(stderr, "ACK %s:%d %d\n", srcIP, srcPort, blockID);
+}
+
+// Vypise zpravu ve tvaru DATA {SRC_IP}:{SRC_PORT}:{DST_PORT} {BLOCK_ID}
+void vypisData(struct sockaddr_in client, struct sockaddr_in server, int blockID){
+    
+    char *srcIP  = inet_ntoa(server.sin_addr);
+    int srcPort = ntohs(server.sin_port); 
+    int dstPort = ntohs(client.sin_port); 
+
+    fprintf(stderr, "DATA %s:%d:%d %d\n", srcIP, srcPort, dstPort, blockID);
+}
+
+int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client, const char destination[], char mode[], char prvniBuffer[], int delkaPrvniho){
+    toLowerString(mode);
+    int modeNUM = (strcmp(mode, "octet") == 0) ? 1 : 2;
+
+    FILE* file;
+    int blockNumber = 1;
+    int finished    = 0;
+    int readBytes;
+    char data[MAX_DATA_SIZE + 4];
+    memset(data, 0, MAX_DATA_SIZE + 4);
+    socklen_t serverAddressLength = sizeof(server);
+
+    if(modeNUM == 1){  // Octet
+        
+        // Soubor
+        file = fopen(destination, "wb");     // Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
+        if(file == NULL){
+            fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
+            close(sockfd);  // Server se timeoutne
+            return 0;
+        }
+        
+        vypisData(client, server, blockNumber);
+        // Zpracovani prvniho bufferu
+        for(int i = 4; i < delkaPrvniho; i++){
+            fputc(prvniBuffer[i], file);
+
+        }
+        
+        if(!posliACK(sockfd, server, blockNumber)){
+            return 0;
+        }
+
+        // Chytani zbylych DATA packetu
+        while(!finished){
+            // Prijmuti dalsiho DATA packetu
+            memset(data, 0, MAX_DATA_SIZE + 4);
+            readBytes = recvfrom(sockfd, data, MAX_DATA_SIZE + 4, 0, (struct sockaddr*) &server, &serverAddressLength);
+
+            if(readBytes == -1){
+                fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+                close(sockfd);
+                return 0; 
+            }
+
+            blockNumber++;
+            vypisData(client, server, blockNumber);
+
+            if(data[1] == 3){
+                int lastBlockID = ((int)data[2] << 8) + (int)data[3];
+                if (lastBlockID == blockNumber - 1){                // Prisla stejna data -> ztratil se ACK
+                    printf("tu\n");
+                    if(!posliACK(sockfd, server, lastBlockID)){
+                        return 0;
+                    }
+                    continue;
+                }
+            } 
+            else {
+                if(data[1] == 5) vypisError(data, client, server);
+            }
+
+            // Zpracovani data packetu
+            if(readBytes < MAX_DATA_SIZE){              // Posledni DATA packet
+                finished = 1;
+            }
+
+            for(int i = 4; i < readBytes; i++){
+                fputc(data[i], file);
+            }
+
+            if(!posliACK(sockfd, server, blockNumber)){
+                return 0;
+            }
+        
+        }
+
+        fclose(file);
+    } 
+    else {          // Netascii
+
+    }
+
+
+
+
+
+
+    return 1;
+
+
+}
+
+//===============================================================================================================================
+// ./tftp-client -h 127.0.0.1 -f ./READ/test.txt -t ./CLIENT/chyceno.txt
 
 int main(int argc, char* argv[]){
     
@@ -211,10 +363,10 @@ int main(int argc, char* argv[]){
     // Zjisteni delky packetu podle OPCODE a MODE + napleni
     int requestLength;
     if(!filepath){  
-        opcode = 2;
+        opcode = 2;     // WRITE
         requestLength = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
     } else {
-        opcode = 1;
+        opcode = 1;     // READ
         requestLength = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
     }
 
@@ -252,18 +404,6 @@ int main(int argc, char* argv[]){
         printf("Server IP: %s\n", serverIP);
     }
 
-    /*
-    POSTUP:
-        1. zjistit IP klienta           -- DONE
-        2. Zjistit IP serveru           -- DONE
-        
-        3. Sestavit packet - REQUEST    -- DONE
-        5. odeslat packet               -- DONE
-        6. cekat na packet zpatky
-        7. zkontrolovat ho
-        8. udelat dalsi a poslat
-    */
-
     // Vygeneruje si TID (rozsah 0 - 65535) , to zadat jako source a destination 69 (108 octal) v requestu 
     srand(time(NULL));
     int clientTID = rand() % 65536;
@@ -291,7 +431,7 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
         close(sockfd);
     return 1;
-}
+    }
 
     // OODESLANI REQUESTU
     int bytesSent;
@@ -303,23 +443,54 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
+//==================================================================================================================================================
 
-    // Prijimuti -- funguje!!!!!!!!!
-    // char buffer[MAX_BUFFER_SIZE];
-    // memset(buffer, 0 , MAX_BUFFER_SIZE);            // Vynuluje buffer
-    // socklen_t serverAddressLength = sizeof(server);
-    // int readBytes;
-
+    // PRIJMUTI
+    char response[MAX_BUFFER_SIZE];
+    memset(response, 0 , MAX_BUFFER_SIZE);        
+    socklen_t serverAddressLength = sizeof(server);
+    int readBytes;
    
-    // readBytes = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &server, &serverAddressLength);
+    readBytes = recvfrom(sockfd, response, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &server, &serverAddressLength);
 
-    // if(readBytes == -1){
-    //     fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
-    //     close(sockfd);
-    //     return 1; 
-    // } else {
-    //     printf("chytil jsem\n");
-    // }
+    if(readBytes == -1){
+        fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+        close(sockfd);
+        return 1; 
+    } else {
+        printf("chytil jsem\n");
+
+        if(opcode == 1){        // Zpracuj cteni
+            if(response[0] == 0 && response[1] == 3){       // DATA
+                if(!zpracujRead(sockfd, server, client, dest_filepath, mode, response, readBytes)){
+                    return 1;
+                }
+            } 
+            else {
+                if(response[0] == 0 && response[1] == 5){   // ERROR
+                    vypisError(response, client, server);
+                    close(sockfd);
+                    return 1;
+                }    
+
+
+
+
+            }
+        } 
+        else {                 // Zpracuj zapis
+
+        }
+
+
+
+
+
+
+
+
+
+    }
 
     // while(!interrupt){
 
