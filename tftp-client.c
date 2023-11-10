@@ -254,7 +254,7 @@ void vypisData(struct sockaddr_in client, struct sockaddr_in server, int blockID
 
 int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client, const char destination[], char mode[], char prvniBuffer[], int delkaPrvniho){
     toLowerString(mode);
-    int modeNUM = (strcmp(mode, "octet") == 0) ? 1 : 2;
+    int modeNum = (strcmp(mode, "octet") == 0) ? 1 : 2;
 
     FILE* file;
     int blockNumber = 1;
@@ -264,10 +264,15 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
     memset(data, 0, MAX_DATA_SIZE + 4);
     socklen_t serverAddressLength = sizeof(server);
 
-    if(modeNUM == 1){  // Octet
+    // if(modeNum == 1){  // Octet
         
         // Soubor
-        file = fopen(destination, "wb");     // Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
+        if(modeNum == 1){
+            file = fopen(destination, "wb");     // Octet -> Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
+        } else {
+            file = fopen(destination, "w");      // Netascii -> same
+        }
+
         if(file == NULL){
             fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
             close(sockfd);  // Server se timeoutne
@@ -275,15 +280,14 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
         }
         
         vypisData(client, server, blockNumber);
+
         // Zpracovani prvniho bufferu
         for(int i = 4; i < delkaPrvniho; i++){
+            if(modeNum == 2 && data[i] == '\n') fputc('\r', file);    // Netascii -> pridani Carry 
             fputc(prvniBuffer[i], file);
-
         }
         
-        if(!posliACK(sockfd, server, blockNumber)){
-            return 0;
-        }
+        if(!posliACK(sockfd, server, blockNumber)) return 0;
 
         // Chytani zbylych DATA packetu
         while(!finished){
@@ -303,7 +307,6 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
             if(data[1] == 3){
                 int lastBlockID = ((int)data[2] << 8) + (int)data[3];
                 if (lastBlockID == blockNumber - 1){                // Prisla stejna data -> ztratil se ACK
-                    printf("tu\n");
                     if(!posliACK(sockfd, server, lastBlockID)){
                         return 0;
                     }
@@ -315,34 +318,35 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
             }
 
             // Zpracovani data packetu
-            if(readBytes < MAX_DATA_SIZE){              // Posledni DATA packet
-                finished = 1;
-            }
+            if(readBytes < MAX_DATA_SIZE) finished = 1;             // Posledni DATA packet
 
             for(int i = 4; i < readBytes; i++){
+                if(modeNum == 2 && data[i] == '\n') fputc('\r', file);    // Netascii -> pridani Carry 
                 fputc(data[i], file);
             }
 
-            if(!posliACK(sockfd, server, blockNumber)){
-                return 0;
-            }
-        
+            if(!posliACK(sockfd, server, blockNumber)) return 0;
         }
 
         fclose(file);
-    } 
-    else {          // Netascii
+    // } 
+    // else {          // Netascii
+    //     // Soubor
+    //     file = fopen(destination, "w");     // Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
+    //     if(file == NULL){
+    //         fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
+    //         close(sockfd);  // Server se timeoutne
+    //         return 0;
+    //     }
 
-    }
 
 
 
 
 
+    // }
 
     return 1;
-
-
 }
 
 //===============================================================================================================================
@@ -355,7 +359,7 @@ int main(int argc, char* argv[]){
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
-    char mode[]               = "Octet";
+    char mode[]               = "octet";
     int opcode                = 0;
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
