@@ -440,40 +440,34 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
         close(sockfd);
         return 1; 
-    } else {
-        printf("chytil jsem\n");
+    }
+    
+    printf("chytil jsem\n");
 
-        if(opcode == 1){        // Zpracuj cteni
-            if(response[0] == 0 && response[1] == 3){       // DATA
-                if(!zpracujRead(sockfd, server, client, dest_filepath, mode, response, readBytes)){
-                    return 1;
-                }
-            } 
-            else {
-                if(response[0] == 0 && response[1] == 5){   // ERROR
-                    vypisError(response, client, server);
-                    close(sockfd);
-                    return 1;
-                }    
+    if(opcode == 1){        // Zpracuj cteni
 
-
-
-
+        if(response[0] == 0 && response[1] == 3){       // DATA
+            if(!zpracujRead(sockfd, server, client, dest_filepath, mode, response, readBytes)){
+                fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
+                return 1;
             }
         } 
-        else {                 // Zpracuj zapis
+        else {
+            if(response[0] == 0 && response[1] == 5){   // ERROR
+                vypisError(response, client, server);
+                close(sockfd);
+                return 1;
+            }    
+
+
+
 
         }
-
-
-
-
-
-
-
-
+    } 
+    else {                 // Zpracuj zapis
 
     }
+
 
     // while(!interrupt){
 
