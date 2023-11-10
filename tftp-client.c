@@ -14,7 +14,6 @@
 #include <unistd.h>
 #include <ctype.h>
 
-
 #define MAX_BUFFER_SIZE 1024
 #define MAX_DATA_SIZE 512
 
@@ -252,100 +251,80 @@ void vypisData(struct sockaddr_in client, struct sockaddr_in server, int blockID
     fprintf(stderr, "DATA %s:%d:%d %d\n", srcIP, srcPort, dstPort, blockID);
 }
 
+// Zpracuje odpovedi na READ request -> Nepridava pri mode netascii Carry (pridava to server), jen jinak otevira soubor pro zapis
+// !!!!!!!!!!!!!!! je potreba dodelat timeout
 int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client, const char destination[], char mode[], char prvniBuffer[], int delkaPrvniho){
-    toLowerString(mode);
-    int modeNum = (strcmp(mode, "octet") == 0) ? 1 : 2;
-
+    
     FILE* file;
+    socklen_t serverAddressLength = sizeof(server);
+    
+    toLowerString(mode);
+    int modeNum     = (strcmp(mode, "octet") == 0) ? 1 : 2;
     int blockNumber = 1;
     int finished    = 0;
     int readBytes;
     char data[MAX_DATA_SIZE + 4];
     memset(data, 0, MAX_DATA_SIZE + 4);
-    socklen_t serverAddressLength = sizeof(server);
+  
+    // Soubor
+    if(modeNum == 1){
+        file = fopen(destination, "wb");     // Octet -> Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
+    } else {
+        file = fopen(destination, "w");      // Netascii -> same
+    }
 
-    // if(modeNum == 1){  // Octet
-        
-        // Soubor
-        if(modeNum == 1){
-            file = fopen(destination, "wb");     // Octet -> Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
-        } else {
-            file = fopen(destination, "w");      // Netascii -> same
+    if(file == NULL){
+        fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
+        close(sockfd);  // Server se timeoutne
+        return 0;
+    }
+    
+    vypisData(client, server, blockNumber);
+
+    // Zpracovani prvniho bufferu
+    for(int i = 4; i < delkaPrvniho; i++){
+        fputc(prvniBuffer[i], file);
+    }
+    
+    if(!posliACK(sockfd, server, blockNumber)) return 0;
+
+    // Chytani zbylych DATA packetu
+    while(!finished){
+        memset(data, 0, MAX_DATA_SIZE + 4);
+        readBytes = recvfrom(sockfd, data, MAX_DATA_SIZE + 4, 0, (struct sockaddr*) &server, &serverAddressLength);
+
+        if(readBytes == -1){
+            fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+            close(sockfd);
+            return 0; 
         }
 
-        if(file == NULL){
-            fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
-            close(sockfd);  // Server se timeoutne
-            return 0;
-        }
-        
+        blockNumber++;
         vypisData(client, server, blockNumber);
 
-        // Zpracovani prvniho bufferu
-        for(int i = 4; i < delkaPrvniho; i++){
-            if(modeNum == 2 && data[i] == '\n') fputc('\r', file);    // Netascii -> pridani Carry 
-            fputc(prvniBuffer[i], file);
+        if(data[1] == 3){
+            int lastBlockID = ((int)data[2] << 8) + (int)data[3];
+            if (lastBlockID == blockNumber - 1){                // Prisla stejna data -> ztratil se ACK
+                if(!posliACK(sockfd, server, lastBlockID)) return 0;
+                    
+                continue;
+            }
+        } 
+        else {
+            if(data[1] == 5) vypisError(data, client, server);
         }
-        
+
+        // Zpracovani data packetu
+        if(readBytes < MAX_DATA_SIZE) finished = 1;             // Posledni DATA packet
+
+        for(int i = 4; i < readBytes; i++){
+            fputc(data[i], file);
+        }
+
         if(!posliACK(sockfd, server, blockNumber)) return 0;
+    }
 
-        // Chytani zbylych DATA packetu
-        while(!finished){
-            // Prijmuti dalsiho DATA packetu
-            memset(data, 0, MAX_DATA_SIZE + 4);
-            readBytes = recvfrom(sockfd, data, MAX_DATA_SIZE + 4, 0, (struct sockaddr*) &server, &serverAddressLength);
-
-            if(readBytes == -1){
-                fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
-                close(sockfd);
-                return 0; 
-            }
-
-            blockNumber++;
-            vypisData(client, server, blockNumber);
-
-            if(data[1] == 3){
-                int lastBlockID = ((int)data[2] << 8) + (int)data[3];
-                if (lastBlockID == blockNumber - 1){                // Prisla stejna data -> ztratil se ACK
-                    if(!posliACK(sockfd, server, lastBlockID)){
-                        return 0;
-                    }
-                    continue;
-                }
-            } 
-            else {
-                if(data[1] == 5) vypisError(data, client, server);
-            }
-
-            // Zpracovani data packetu
-            if(readBytes < MAX_DATA_SIZE) finished = 1;             // Posledni DATA packet
-
-            for(int i = 4; i < readBytes; i++){
-                if(modeNum == 2 && data[i] == '\n') fputc('\r', file);    // Netascii -> pridani Carry 
-                fputc(data[i], file);
-            }
-
-            if(!posliACK(sockfd, server, blockNumber)) return 0;
-        }
-
-        fclose(file);
-    // } 
-    // else {          // Netascii
-    //     // Soubor
-    //     file = fopen(destination, "w");     // Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
-    //     if(file == NULL){
-    //         fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
-    //         close(sockfd);  // Server se timeoutne
-    //         return 0;
-    //     }
-
-
-
-
-
-
-    // }
-
+    fclose(file);
     return 1;
 }
 
@@ -359,7 +338,7 @@ int main(int argc, char* argv[]){
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;
     const char* filepath      = NULL;
-    char mode[]               = "octet";
+    char mode[]               = "netascii";
     int opcode                = 0;
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
