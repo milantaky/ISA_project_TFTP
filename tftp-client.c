@@ -144,7 +144,7 @@ char toLowerString(char string[]){
 
 // Naplni RRQ/WRQ packet
 void naplnRequestPacket(char rrq_packet[], const char filepath[], const char dest_filepath[], char mode[], int opcode){
-    rrq_packet[0] = 0;
+    rrq_packet[0] = 1;
     int last_id = 2;
     printf("opccc: %d\n", opcode);
     if(opcode == 1){                                    // RRQ
@@ -250,6 +250,28 @@ void vypisData(struct sockaddr_in client, struct sockaddr_in server, int blockID
     fprintf(stderr, "DATA %s:%d:%d %d\n", srcIP, srcPort, dstPort, blockID);
 }
 
+// Posle error packet
+int posliErrorPacket(int sockfd, struct sockaddr_in server, int errorCode, char message[]){
+    int packetLength = 5 + (int) strlen(message);    // 2 opcode, 2 errcode, \0
+    char errorPacket[packetLength];
+    
+    errorPacket[0] = 0;
+    errorPacket[1] = 5;
+    errorPacket[2] = 0;         // Tady si to muzu dovolit -> errorCode je 0-7
+    errorPacket[3] = errorCode;
+    
+    strcpy(errorPacket + 4, message);
+    errorPacket[packetLength] = '\0';
+    // Tady je packet ready
+
+    // Posilani
+    if(!posliPacket(sockfd, errorPacket, packetLength, server)){
+        return 0;
+    }
+
+    return 1;
+}
+
 // Zpracuje odpovedi na READ request -> Nepridava pri mode netascii Carry (pridava to server), jen jinak otevira soubor pro zapis
 // !!!!!!!!!!!!!!! je potreba dodelat timeout
 int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client, const char destination[], char mode[], char prvniBuffer[], int delkaPrvniho){
@@ -264,8 +286,7 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
     int readBytes;
     char data[MAX_DATA_SIZE + 4];
     memset(data, 0, MAX_DATA_SIZE + 4);
-  
-    // Soubor
+
     file = (modeNum == 2) ? fopen(destination, "wb") : fopen(destination, "w");
 
     if(file == NULL){
@@ -416,8 +437,8 @@ int main(int argc, char* argv[]){
     signal(SIGINT, intHandler);
     int port                  = 69;                      // Pokud neni specifikovan, predpoklada se vychozi dle specifikace (69) -> kdyztak se ve funkci prepise
     const char* hostname      = NULL;
-    const char* dest_filepath = NULL;
-    const char* filepath      = NULL;
+    const char* dest_filepath = NULL;                    // WRITE -> soubor u clienta
+    const char* filepath      = NULL;                    // READ  -> soubor na serveru
     char mode[]               = "netascii";
     int opcode                = 0;
 
@@ -429,14 +450,22 @@ int main(int argc, char* argv[]){
     if(!filepath){  
         opcode = 2;     // WRITE
         requestLength = 2 + (int) strlen(dest_filepath) + 1 + (int) strlen(mode) + 1; // stdin
+        if(!access(dest_filepath, F_OK & R_OK)){
+            fprintf(stderr, "CHYBA: 1Soubor %s jiz existuje, nebo nemate prava pro cteni.\n", dest_filepath);
+            return 1;
+        }
     } else {
         opcode = 1;     // READ
         requestLength = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
+        if(!access(dest_filepath, F_OK & W_OK)){
+            fprintf(stderr, "CHYBA: 2Soubor %s jiz existuje, nebo nemate prava pro zapis.\n", dest_filepath);
+            return 1;
+        }
     }
     char requestPacket[requestLength];
     naplnRequestPacket(requestPacket, filepath, dest_filepath, mode, opcode);
 
-    vypisPacket(requestPacket, requestLength);  
+    // vypisPacket(requestPacket, requestLength);  
 
 // ============= Ziskani IP adres
     // CLIENT

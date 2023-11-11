@@ -250,6 +250,17 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
     buffer[2] = blockNumber >> 8;
     buffer[3] = blockNumber;
 
+    // Kontola souboru pred otevrenim
+    if(access(location, F_OK)){     // Existence
+        posliErrorPacket(sockfd, client, 1, "File not found.");
+        return 0;
+    }
+
+    if(access(location, R_OK)){     // Prava
+        posliErrorPacket(sockfd, client, 2, "Access violation.");
+        return 0;
+    }
+
     readFile = (mode == 2) ? fopen(location, "rb") : fopen(location, "r");
 
     if(readFile == NULL){
@@ -341,6 +352,12 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
     char data[MAX_DATA_SIZE + 4];
     memset(data, 0, MAX_DATA_SIZE + 4);
 
+    // Kontola souboru pred otevrenim
+    if(!access(location, F_OK)){     // Existence
+        posliErrorPacket(sockfd, client, 6, "File already exists.");
+        return 0;
+    }
+
     // 2 == octet 1 == netascii 
     file = (mode == 2) ? fopen(location, "wb") : fopen(location, "w");
 
@@ -383,8 +400,17 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
         if(readBytes < MAX_DATA_SIZE + 4) finished = 1;             // Posledni DATA packet
 
         for(int i = 4; i < readBytes; i++){
-            if(mode == 1 && data[i] == '\n' && data[i - 1] != '\r') fputc('\r', file);   // Zacinam na indexu 4, muzu si to dovolit
-            fputc(data[i], file);
+            if(mode == 1 && data[i] == '\n' && data[i - 1] != '\r'){
+                if(fputc('\r', file) == EOF){                              // Zacinam na indexu 4, muzu si to dovolit
+                    posliErrorPacket(sockfd, client, 3, "Disk full or allocation exceeded.");
+                    return 0;
+                } 
+            }
+
+            if(fputc(data[i], file) == EOF){                              // Zacinam na indexu 4, muzu si to dovolit
+                posliErrorPacket(sockfd, client, 3, "Disk full or allocation exceeded.");
+                return 0;
+            } 
         }
 
         if(!posliACK(sockfd, client, blockNumber)) return 0;
@@ -393,7 +419,6 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
     fclose(file);
     return 1;
 }
-
 
 //===============================================================================================================================
 // ./tftp-server /WRITE
@@ -458,7 +483,7 @@ int main(int argc, char* argv[]){
     // ZPRACOVANI REQUESTU
     if(buffer[0] != 0){                
         fprintf(stderr, "CHYBA: Chybny TFTP packet.\n");
-        posliErrorPacket(sockfd, client, 0, "Chybny TFTP packet.");
+        posliErrorPacket(sockfd, client, 4, "Illegal TFTP operation.");
         return 1;
     } 
 
@@ -467,7 +492,7 @@ int main(int argc, char* argv[]){
 
     if(!(mode = zkontrolujMode(buffer, offset))){          // 2 == octet 1 == netascii            
         fprintf(stderr, "CHYBA: Spatny mode requestu. Zvolte pouze netascii/octet.\n");
-        posliErrorPacket(sockfd, client, 0, "Spatny request mode.");
+        posliErrorPacket(sockfd, client, 4, "Illegal TFTP operation.");
         free(location);
         return 1;
     }
@@ -506,6 +531,7 @@ int main(int argc, char* argv[]){
         // if(!zpracujWrite(sockfd, server, client, cestaWrite, mode, buffer, readBytes)){
         if(!zpracujWrite(sockfd, server, client, cestaWrite, mode)){
             fprintf(stderr, "Nastala CHYBA pri zpracovani requestu WRITE.\n");
+            free(location);
             return 1;
         }
 
@@ -518,18 +544,6 @@ int main(int argc, char* argv[]){
         return 1;
     }
     
-
-
-
-    // printf("%x%x", buffer[0], buffer[1]);
-    // for(int i = 2; i < readBytes; i++){
-    //     if(buffer[i] == '\n'){
-    //         printf("X");
-    //     } else {
-    //         printf("%c", buffer[i]);
-    //     }
-    // }
-    // printf("\n");
 
     // while(!interrupt){  // !!!!!!! loopuje to tady pri na interruptu
     // }
