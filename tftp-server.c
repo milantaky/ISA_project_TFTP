@@ -250,11 +250,7 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
     buffer[2] = blockNumber >> 8;
     buffer[3] = blockNumber;
 
-    if(mode == 2){
-        readFile = fopen(location, "rb");   // read binary
-    } else {
-        readFile = fopen(location, "r");   // read binary
-    }
+    readFile = (mode == 2) ? fopen(location, "rb") : fopen(location, "r");
 
     if(readFile == NULL){
         fprintf(stderr, "Nastala CHYBA pri otevirani souboru pro cteni: %s\n", strerror(errno));
@@ -316,9 +312,13 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
             if(lastACK != blockNumber)     // Posli znovu -> ACKnut minuly blok
                 resend = 1;
             else
-                blockNumber++;
-            
-        }   
+                blockNumber++; 
+        }
+        else {
+            fprintf(stderr, "CHYBA: Neocekavany packet ocekavan ACK.\n");
+            close(sockfd);
+            return 0; 
+        }
     }
 
     fclose(readFile);
@@ -326,10 +326,74 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
 
 }
 
-// // Zpracuje WRITE -> Z pohledu serveru: Vytvori soubor a naplni ho
-// int zpracujWrite(){
+// Zpracuje WRITE -> Z pohledu serveru: Otevre soubor a posila data pakcety
+//                -> Pri mode netascii zpracovava \r a \n
+// !!!!!!!!!!!!!!! je potreba dodelat timeout
+// int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char location[], int mode, char prvniBuffer[], int delkaPrvniho){
+int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char location[], int mode){
 
-// }
+    FILE* file;
+    socklen_t clientAddressLength = sizeof(client);
+    int blockNumber = 0;
+    int finished    = 0;
+    int readBytes;
+
+    char data[MAX_DATA_SIZE + 4];
+    memset(data, 0, MAX_DATA_SIZE + 4);
+
+    // 2 == octet 1 == netascii 
+    file = (mode == 2) ? fopen(location, "wb") : fopen(location, "w");
+
+    if(file == NULL){
+        fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
+        close(sockfd);  // Client se timeoutne
+        return 0;
+    }
+
+    if(!posliACK(sockfd, client, blockNumber)) return 0;
+
+    // Chytani DATA packetu
+    while(!finished){
+        memset(data, 0, MAX_DATA_SIZE + 4);
+        readBytes = recvfrom(sockfd, data, MAX_DATA_SIZE + 4, 0, (struct sockaddr*) &client, &clientAddressLength);
+
+        if(readBytes == -1){
+            fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+            close(sockfd);
+            return 0; 
+        }
+
+        blockNumber++;
+        vypisData(client, server, blockNumber);
+
+        // Kontrola prijatych dat
+        if(data[1] == 3){
+            int lastBlockID = ((int)data[2] << 8) + (int)data[3];
+            if (lastBlockID == blockNumber - 1){                // Prisla stejna data -> ztratil se ACK
+                if(!posliACK(sockfd, client, lastBlockID)) return 0;
+
+                continue;
+            }
+        } 
+        else {
+            if(data[1] == 5) vypisError(data, client, server);
+        }
+
+        // Zpracovani data packetu
+        if(readBytes < MAX_DATA_SIZE + 4) finished = 1;             // Posledni DATA packet
+
+        for(int i = 4; i < readBytes; i++){
+            if(mode == 1 && data[i] == '\n' && data[i - 1] != '\r') fputc('\r', file);   // Zacinam na indexu 4, muzu si to dovolit
+            fputc(data[i], file);
+        }
+
+        if(!posliACK(sockfd, client, blockNumber)) return 0;
+    }
+
+    fclose(file);
+    return 1;
+}
+
 
 //===============================================================================================================================
 // ./tftp-server /WRITE
@@ -351,6 +415,8 @@ int main(int argc, char* argv[]){
     server.sin_addr.s_addr   = INADDR_ANY;
 
     // fork() ??? pak upravit listen na delsi frontu nez 1
+
+    printf("CESTA: %s\n", cesta);
 
     // SOCKETY
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);    // AF_INET = IPv4, SOCK_DGRAM = UDP, 0 = IP protocol
@@ -399,7 +465,7 @@ int main(int argc, char* argv[]){
     nactiLokaci(buffer, &location);      
     offset = 3 + (int) strlen(location);            // 2 kvuli opcode a 1 je \0 za lokaci
 
-    if(!(mode = zkontrolujMode(buffer, offset))){                    
+    if(!(mode = zkontrolujMode(buffer, offset))){          // 2 == octet 1 == netascii            
         fprintf(stderr, "CHYBA: Spatny mode requestu. Zvolte pouze netascii/octet.\n");
         posliErrorPacket(sockfd, client, 0, "Spatny request mode.");
         free(location);
@@ -407,6 +473,7 @@ int main(int argc, char* argv[]){
     }
 
     if(buffer[1] == 1){                 // READ
+        printf("dostal jsem packet pro cteni\n");
         vypisRequest(client, mode, location, 1);
         if(!zpracujRead(sockfd, client, location, mode)){
             fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
@@ -416,7 +483,32 @@ int main(int argc, char* argv[]){
     } 
     else if(buffer[1] == 2){            // WRITE
         printf("dostal jsem packet pro zapis\n");
+        
+        // Uprava cesty
+        char cestaNew[(int) strlen(cesta) + 1];
+        char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
+    
+        for(int i = 0; i < (int) strlen(cesta); i++){
+            cestaNew[i] = cesta[i];
+        }
+        
+        cestaNew[(int) strlen(cesta)] = '\0';
+    
+        strcpy(cestaWrite, cestaNew);
+        if(location[0] == '.'){
+            strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
+        } else {
+            strcpy(cestaWrite + (int)(strlen(cesta)), location);
+        }
+
         vypisRequest(client, mode, location, 2);
+
+        // if(!zpracujWrite(sockfd, server, client, cestaWrite, mode, buffer, readBytes)){
+        if(!zpracujWrite(sockfd, server, client, cestaWrite, mode)){
+            fprintf(stderr, "Nastala CHYBA pri zpracovani requestu WRITE.\n");
+            return 1;
+        }
+
         
     } 
     else {

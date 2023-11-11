@@ -143,10 +143,10 @@ char toLowerString(char string[]){
 }
 
 // Naplni RRQ/WRQ packet
-void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], int opcode){
+void naplnRequestPacket(char rrq_packet[], const char filepath[], const char dest_filepath[], char mode[], int opcode){
     rrq_packet[0] = 0;
     int last_id = 2;
-    
+    printf("opccc: %d\n", opcode);
     if(opcode == 1){                                    // RRQ
         rrq_packet[1] = 1;
 
@@ -157,13 +157,12 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], char mode[], i
         last_id += (int) strlen(filepath);
     } else {                                            //WRQ
         rrq_packet[1] = 2;
-        char x[] = "stdin";
 
-        for(int i = 0; i < (int) strlen(x); i++){
-            rrq_packet[last_id + i] = x[i];
+        for(int i = 0; i < (int) strlen(dest_filepath); i++){
+            rrq_packet[last_id + i] = dest_filepath[i];
         }
 
-        last_id = 7;
+        last_id += (int) strlen(dest_filepath);
     }
 
     rrq_packet[last_id++] = '\0';
@@ -259,7 +258,7 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
     socklen_t serverAddressLength = sizeof(server);
     
     toLowerString(mode);
-    int modeNum     = (strcmp(mode, "octet") == 0) ? 1 : 2;
+    int modeNum     = (strcmp(mode, "octet") == 0) ? 2 : 1;
     int blockNumber = 1;
     int finished    = 0;
     int readBytes;
@@ -267,11 +266,7 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
     memset(data, 0, MAX_DATA_SIZE + 4);
   
     // Soubor
-    if(modeNum == 1){
-        file = fopen(destination, "wb");     // Octet -> Vytvori soubor pro zapis (kdyz uz soubor existuje, prepise ho)
-    } else {
-        file = fopen(destination, "w");      // Netascii -> same
-    }
+    file = (modeNum == 2) ? fopen(destination, "wb") : fopen(destination, "w");
 
     if(file == NULL){
         fprintf(stderr, "Nastala CHYBA pri vytvareni souboru.\n");
@@ -302,11 +297,11 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
         blockNumber++;
         vypisData(client, server, blockNumber);
 
+        // Kontrola prijatych dat
         if(data[1] == 3){
             int lastBlockID = ((int)data[2] << 8) + (int)data[3];
             if (lastBlockID == blockNumber - 1){                // Prisla stejna data -> ztratil se ACK
                 if(!posliACK(sockfd, server, lastBlockID)) return 0;
-                    
                 continue;
             }
         } 
@@ -315,7 +310,7 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
         }
 
         // Zpracovani data packetu
-        if(readBytes < MAX_DATA_SIZE) finished = 1;             // Posledni DATA packet
+        if(readBytes < MAX_DATA_SIZE + 4) finished = 1;             // Posledni DATA packet
 
         for(int i = 4; i < readBytes; i++){
             fputc(data[i], file);
@@ -328,8 +323,93 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
     return 1;
 }
 
+// Zpracuje odpovedi na WRITE request -> Nezapisuje pri mode netascii Carry (pridava to server), jen jinak otevira soubor pro cteni
+// !!!!!!!!!!!!!!! je potreba dodelat timeout
+// int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, const char destination[], char mode[]){
+int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char mode[]){
+    
+    socklen_t serverAddressLength = sizeof(server);
+    
+    toLowerString(mode);
+    int modeNum = (strcmp(mode, "octet") == 0) ? 1 : 2;
+    printf("modeNum: %d\n", modeNum);
+    char response[MAX_BUFFER_SIZE];
+    char buffer[MAX_DATA_SIZE + 4];
+    char backup[MAX_DATA_SIZE + 4];
+
+    // Tady uz prisel ACK na packet 0
+
+    int finished    = 0;
+    int resend      = 0;
+    int bytes       = 0;
+    int readBytes;
+    int blockNumber = 1;
+    while(!finished && !resend){
+        if(!resend){
+            // Naplnit buffer daty
+            memset(buffer, 0, MAX_DATA_SIZE + 4);    // Nejprve vynulovat
+            buffer[0] = 0; 
+            buffer[1] = 3; 
+            buffer[2] = blockNumber >> 8; 
+            buffer[3] = blockNumber; 
+
+            char helpBuffer[MAX_DATA_SIZE];
+            memset(helpBuffer, 0, MAX_DATA_SIZE);
+
+            bytes = 0;
+            char c = getc(stdin);
+            while(c != EOF && bytes < MAX_DATA_SIZE){               // Plneni - Trosku neusporny
+                    helpBuffer[bytes] = c;
+                    bytes++;
+                    if(bytes != MAX_DATA_SIZE) c = getc(stdin);
+            }
+
+            if(c == EOF) finished = 1;
+            
+            strncpy(buffer + 4, helpBuffer, MAX_DATA_SIZE);
+            strncpy(backup, buffer, MAX_DATA_SIZE + 4);             // Zaloha
+            memset(response, 0, MAX_BUFFER_SIZE);                   // Nulovani prijimaciho bufferu
+
+            // Odeslani dat
+            if(!posliPacket(sockfd, buffer, bytes + 4, server)) return 0;
+        }
+        else {  // Znovu poslani posledniho packetu
+            if(!posliPacket(sockfd, backup, bytes + 4, server)) return 0;
+            resend = 0;
+        }
+        
+        // Prijimani ACKu
+        readBytes = recvfrom(sockfd, response, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &server, &serverAddressLength);
+
+        if(readBytes == -1){
+            fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
+            close(sockfd);
+            return 0; 
+        } 
+        if(response[0] == 0 && response[1] == 4){
+            int lastACK = ((int)buffer[2] << 8) + (int)buffer[3];
+            vypisACK(client, blockNumber);
+
+            if(lastACK != blockNumber)     // Posli znovu -> ACKnut minuly blok
+                resend = 1;
+            else
+                blockNumber++;
+            
+        } 
+        else {
+            fprintf(stderr, "CHYBA: Neocekavany packet ocekavan ACK.\n");
+            close(sockfd);
+            return 0; 
+        }
+    }
+
+    // fclose(file);
+    return 1;
+}
+
 //===============================================================================================================================
-// ./tftp-client -h 127.0.0.1 -f ./READ/test.txt -t ./CLIENT/chyceno.txt
+// read ./tftp-client -h 127.0.0.1 -f ./READ/test.txt -t ./CLIENT/chyceno.txt
+// write ./tftp-client -h 127.0.0.1 -t /chyceno.txt < test.txt
 
 int main(int argc, char* argv[]){
     
@@ -345,18 +425,18 @@ int main(int argc, char* argv[]){
 
     // Zjisteni delky packetu podle OPCODE a MODE + napleni
     int requestLength;
+    printf("tu\n");
     if(!filepath){  
         opcode = 2;     // WRITE
-        requestLength = 2 + 5 + 1 + (int) strlen(mode) + 1; // stdin
+        requestLength = 2 + (int) strlen(dest_filepath) + 1 + (int) strlen(mode) + 1; // stdin
     } else {
         opcode = 1;     // READ
         requestLength = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
     }
-
     char requestPacket[requestLength];
-    naplnRequestPacket(requestPacket, filepath, mode, opcode);
+    naplnRequestPacket(requestPacket, filepath, dest_filepath, mode, opcode);
 
-    // vypisPacket(requestPacket, requestLength);  
+    vypisPacket(requestPacket, requestLength);  
 
 // ============= Ziskani IP adres
     // CLIENT
@@ -448,7 +528,7 @@ int main(int argc, char* argv[]){
 
         if(response[0] == 0 && response[1] == 3){       // DATA
             if(!zpracujRead(sockfd, server, client, dest_filepath, mode, response, readBytes)){
-                fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
+                fprintf(stderr, "Nastala CHYBA pri zpracovani requestu READ.\n");
                 return 1;
             }
         } 
@@ -458,14 +538,24 @@ int main(int argc, char* argv[]){
                 close(sockfd);
                 return 1;
             }    
-
-
-
-
         }
     } 
     else {                 // Zpracuj zapis
 
+        if(response[0] == 0 && response[1] == 4){       // DATA
+            // if(!zpracujWrite(sockfd, server, client, dest_filepath, mode)){
+            if(!zpracujWrite(sockfd, server, client, mode)){
+                fprintf(stderr, "Nastala CHYBA pri zpracovani requestu WRITE.\n");
+                return 1;
+            }
+        } 
+        else {
+            if(response[0] == 0 && response[1] == 5){   // ERROR
+                vypisError(response, client, server);
+                close(sockfd);
+                return 1;
+            }    
+        }
     }
 
 
