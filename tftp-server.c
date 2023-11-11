@@ -271,7 +271,6 @@ void vypisRequest(struct sockaddr_in client, int mode, char filepath[], int requ
 }
 
 // Zpracuje READ -> Z pohledu serveru: Otevre soubor a posila data pakcety
-// !!!!!!!!!!!!!!! je potreba dodelat timeout
 int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode){
 
     FILE *readFile;
@@ -376,8 +375,6 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
 
 // Zpracuje WRITE -> Z pohledu serveru: Otevre soubor a posila data pakcety
 //                -> Pri mode netascii zpracovava \r a \n
-// !!!!!!!!!!!!!!! je potreba dodelat timeout
-// int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char location[], int mode, char prvniBuffer[], int delkaPrvniho){
 int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char location[], int mode){
 
     FILE* file;
@@ -457,10 +454,100 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
     return 1;
 }
 
-int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in server, char buffer[], int mode, const char cesta[], char location[]){
+// Rozhodni a spln options + otestuj hodnoty jestli mohou byt!!!!!!!!!!!!!!
+
+// Zpracuje options
+int zpracujOptions(char buffer[], int readBytes){
+
+    int nulls        = 0;
+    int optionsExist = 0;
+
+    printf("\nHLEDAM OPTIONS\n");
+    int i = 2;
+    
+    // Dosjde se k \0 za mode, a pokracuje?
+    while(i < readBytes){
+        if(buffer[i] == '\0') nulls++;
+        if(nulls == 2 && (i + 1) < readBytes){          
+            optionsExist = 1;  
+            break;
+        }
+        i++;
+    }
+    
+    if(!optionsExist) return 1;
+    
+    i++;
+    int optNumber = 0;                  // timeout = 4, tsize = 2, blksize = 1  -> funguje to jako prava v linuxu
+    int optValues[3] = {0, 0, 0};
+
+    // Iteruje se pres options
+    while(optionsExist){
+        
+        // Nacteni optionu
+        char option[10];
+        memset(option, '0', 10);
+        strcpy(option, buffer + i);
+        printf("option: %s\n", option);
+        
+        // Je tam i value?
+        if((i + (int)strlen(option) + 1) < readBytes){           
+            i += strlen(option) + 1;    
+        } else {
+            return 0;
+        }        
+        
+        // Nacte se, a prevede value
+        char value[10];
+        memset(value, '0', 10);
+        strcpy(value, buffer + i);
+        int valuee = atoi(value);
+        printf("valuee: %d\n", valuee);
+        i += strlen(value);
+        
+        // Zjisti se co to bylo za value
+        if(strcmp(option, "timeout") == 0){
+            optNumber += 4;
+            optValues[0] = valuee;
+        }
+
+        if(strcmp(option, "tsize") == 0){
+            optNumber += 2;  
+            optValues[1] = valuee;
+        }
+        
+        if(strcmp(option, "blksize") == 0){
+            optNumber += 1;  
+            optValues[2] = valuee;
+        } 
+
+        // Jsou tam dalsi?
+        if(!((i + 1) < readBytes)){                  
+            break;
+        } else {
+            i++;
+        }
+    }
+
+    printf("\nkouzelny cislo %d\n", optNumber);
+    printf("hodnoty: %d %d %d\n", optValues[0], optValues[1], optValues[2]);
+    return 1;
+
+}
+
+
+// Zpravuje request
+int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in server, char buffer[], int readBytes, int mode, const char cesta[], char location[]){
+    
+    if(!zpracujOptions(buffer, readBytes)){
+        posliErrorPacket(sockfd, client, 4, "Illegal TFTP operation.");
+        return 1;
+    }
+
     if(buffer[1] == 1){                 // READ
         printf("dostal jsem packet pro cteni\n");
         vypisRequest(client, mode, location, 1);
+
         if(!zpracujRead(sockfd, client, location, mode)){
             fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
             free(location);
@@ -578,7 +665,6 @@ int main(int argc, char* argv[]){
     } 
     
     // ZPRACOVANI REQUESTU
-
     if(buffer[0] != 0){                
         fprintf(stderr, "CHYBA: Chybny TFTP packet.\n");
         posliErrorPacket(sockfd, client, 4, "Illegal TFTP operation.");
@@ -595,7 +681,10 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    if(zpracujRequest(sockfd, client, server, buffer, mode, cesta, location)) return 1;
+    // Zpracovani options
+    
+
+    if(zpracujRequest(sockfd, client, server, buffer, readBytes, mode, cesta, location)) return 1;
 
     free(location);
     close(sockfd);

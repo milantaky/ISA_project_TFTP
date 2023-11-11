@@ -711,7 +711,7 @@ int main(int argc, char* argv[]){
     memset(response, 0 , MAX_BUFFER_SIZE);        
     socklen_t serverAddressLength = sizeof(server);
     int readBytes;
-   
+    
     readBytes = recvfrom(sockfd, response, MAX_BUFFER_SIZE, 0, (struct sockaddr*) &server, &serverAddressLength);
 
     if(readBytes == -1){
@@ -719,7 +719,6 @@ int main(int argc, char* argv[]){
         close(sockfd);
         return 1; 
     }
-    
     printf("chytil jsem\n");
 
     if(opcode == 1){        // Zpracuj cteni
