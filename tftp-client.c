@@ -17,12 +17,49 @@
 #define MAX_BUFFER_SIZE 1024
 #define MAX_DATA_SIZE 512
 
-int interrupt = 0;
+int sockfd;
 
 // Zpracovani interruptu
 void intHandler(int signum) {
     (void)signum;   // musi to byt takhle, jinak compiler nadava
-    interrupt = 1;
+    close(sockfd);
+    exit(1);
+}
+
+// Upravi socket na zaklade option timeout
+// Zavre stary, a otevre a nastavi novy socket -> nemelo by se nastavovat po aktivni komunikaci
+int upravSocket(int time, struct sockaddr_in server){
+
+    // Zavri stary socket
+    close(sockfd);
+
+    // Otevri novy s timeoutem
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);  
+
+    if(sockfd < 0){
+        fprintf(stderr, "CHYBA pri otevirani socketu.\n");
+        return 0;
+    }
+
+    // Nastaveni timeoutu - default 10s
+    struct timeval timeout;
+    timeout.tv_sec  = time;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) == -1) {
+        fprintf(stderr, "Nastala chyba pri nastavovani socketu.\n");
+        close(sockfd);
+        return 0;
+    }
+
+    // SOCKET BIND
+    if(bind(sockfd, (struct sockaddr*) &server, sizeof(server)) < 0){
+        fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
+        close(sockfd);
+        return 0;
+    }
+
+    return 1;
 }
 
 // Zkontroluje a nastavi argumenty -> duh
@@ -515,6 +552,17 @@ int main(int argc, char* argv[]){
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(sockfd < 0){
         fprintf(stderr, "Nastala CHYBA pri otevirani socketu.\n");
+        return 1;
+    }
+
+    // Nastaveni timeoutu - default 10s
+    struct timeval timeout;
+    timeout.tv_sec  = 10;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) == -1) {
+        fprintf(stderr, "Nastala chyba pri nastavovani socketu.\n");
+        close(sockfd);
         return 1;
     }
 
