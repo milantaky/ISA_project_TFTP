@@ -179,11 +179,10 @@ char toLowerString(char string[]){
     return *string;
 }
 
-// Naplni RRQ/WRQ packet
-void naplnRequestPacket(char rrq_packet[], const char filepath[], const char dest_filepath[], char mode[], int opcode){
-    rrq_packet[0] = 1;
+void naplnRequestPacket(char rrq_packet[], const char filepath[], const char dest_filepath[], char mode[], int opcode, int opts[], int vals[]){
+    rrq_packet[0] = 0;
     int last_id = 2;
-    printf("opccc: %d\n", opcode);
+    
     if(opcode == 1){                                    // RRQ
         rrq_packet[1] = 1;
 
@@ -210,7 +209,120 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], const char des
     
     last_id += strlen(mode);
     rrq_packet[last_id] = '\0';
+    
+    if(opts[0]){
+        last_id++;
+        strcpy(rrq_packet + last_id, "timeout");
+        last_id += 8;
+        rrq_packet[last_id] = '\0';
+        
+        char value[10];
+        sprintf(value, "%d", vals[0]);
+        strncpy(rrq_packet + last_id, value, strlen(value));
+        last_id += strlen(value);
+        rrq_packet[last_id] = '\0';
+    }
+    
+    if(opts[1]){
+        last_id++;
+        strcpy(rrq_packet + last_id, "tsize");
+        last_id += 6;
+        rrq_packet[last_id] = '\0';
+        
+        char value[10];
+        sprintf(value, "%d", vals[1]);
+        strncpy(rrq_packet + last_id, value, strlen(value));
+        last_id += strlen(value);
+        rrq_packet[last_id] = '\0';
+    }
+    
+    if(opts[2]){
+        last_id++;
+        strcpy(rrq_packet + last_id, "blksize");
+        last_id += 8;
+        rrq_packet[last_id] = '\0';
+        
+        char value[10];
+        sprintf(value, "%d", vals[2]);
+        strncpy(rrq_packet + last_id, value, strlen(value));
+        last_id += strlen(value);
+        rrq_packet[last_id] = '\0';
+    }
 }
+
+// Zjisti delku options
+int zjistiOptionLength(int opts[], int vals[]){
+    int length = 0;
+
+    if(opts[0]){
+        if(!(vals[0] >= 1 && vals[0] <= 255)){
+            fprintf(stderr, "CHYBA: Hodnoty rozsireni mimo rozsah.\n");
+            return -1;
+        }
+        
+        char value[10];
+        sprintf(value, "%d", vals[0]);
+        length += strlen(value) + 9;
+    }
+    
+    if(opts[1]){
+        if(!(vals[1] >= 1 && vals[1] <= 65464)){        //???????????
+            fprintf(stderr, "CHYBA: Hodnoty rozsireni mimo rozsah.\n");
+            return -1;
+        }
+        
+        char value[10];
+        sprintf(value, "%d", vals[1]);
+        length += strlen(value) + 7;
+    }
+    
+    if(opts[2]){
+        if(!(vals[2] >= 8 && vals[2] <= 65464)){
+            fprintf(stderr, "CHYBA: Hodnoty rozsireni mimo rozsah.\n");
+            return -1;
+        }
+        
+        char value[10];
+        sprintf(value, "%d", vals[2]);
+        length += strlen(value) + 9;
+    }
+
+    return length;
+}
+
+
+// // Naplni RRQ/WRQ packet
+// void naplnRequestPacket(char rrq_packet[], const char filepath[], const char dest_filepath[], char mode[], int opcode){
+//     rrq_packet[0] = 0;
+//     int last_id = 2;
+    
+//     if(opcode == 1){                                    // RRQ
+//         rrq_packet[1] = 1;
+
+//         for(int i = 0; i < (int) strlen(filepath); i++){
+//             rrq_packet[last_id + i] = filepath[i];
+//         }
+
+//         last_id += (int) strlen(filepath);
+//     } else {                                            //WRQ
+//         rrq_packet[1] = 2;
+
+//         for(int i = 0; i < (int) strlen(dest_filepath); i++){
+//             rrq_packet[last_id + i] = dest_filepath[i];
+//         }
+
+//         last_id += (int) strlen(dest_filepath);
+//     }
+
+//     rrq_packet[last_id++] = '\0';
+    
+//     for(int i = 0; i < (int) strlen(mode); i++){        // Mode
+//         rrq_packet[last_id + i] = mode[i];
+//     }
+    
+//     last_id += strlen(mode);
+//     rrq_packet[last_id] = '\0';
+// }
 
 // Vypise obsah packetu
 void vypisPacket(char packet[], int length){
@@ -294,7 +406,7 @@ int posliErrorPacket(int sockfd, struct sockaddr_in server, int errorCode, char 
     
     errorPacket[0] = 0;
     errorPacket[1] = 5;
-    errorPacket[2] = 0;         // Tady si to muzu dovolit -> errorCode je 0-7
+    errorPacket[2] = errorCode >> 8;
     errorPacket[3] = errorCode;
     
     strcpy(errorPacket + 4, message);
@@ -476,14 +588,15 @@ int main(int argc, char* argv[]){
     const char* hostname      = NULL;
     const char* dest_filepath = NULL;                    // WRITE -> soubor u clienta
     const char* filepath      = NULL;                    // READ  -> soubor na serveru
-    char mode[]               = "netascii";
+    char mode[]               = "octet";
     int opcode                = 0;
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
 
+//====================================================
+
     // Zjisteni delky packetu podle OPCODE a MODE + napleni
     int requestLength;
-    printf("tu\n");
     if(!filepath){  
         opcode = 2;     // WRITE
         requestLength = 2 + (int) strlen(dest_filepath) + 1 + (int) strlen(mode) + 1; // stdin
@@ -499,10 +612,18 @@ int main(int argc, char* argv[]){
             return 1;
         }
     }
-    char requestPacket[requestLength];
-    naplnRequestPacket(requestPacket, filepath, dest_filepath, mode, opcode);
 
-    // vypisPacket(requestPacket, requestLength);  
+    int opts[3] = {0, 0, 0};            // timeout, tsize, blksize
+    int vals[3] = {10, 5444, 1024};
+
+    int optLength = zjistiOptionLength(opts, vals);
+    if(optLength == -1) return 1;
+    requestLength += optLength;
+
+    char requestPacket[requestLength];
+    naplnRequestPacket(requestPacket, filepath, dest_filepath, mode, opcode, opts, vals);
+
+//===================================================
 
 // ============= Ziskani IP adres
     // CLIENT
@@ -557,7 +678,7 @@ int main(int argc, char* argv[]){
 
     // Nastaveni timeoutu - default 10s
     struct timeval timeout;
-    timeout.tv_sec  = 10;
+    timeout.tv_sec  = 5;
     timeout.tv_usec = 0;
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) == -1) {

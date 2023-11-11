@@ -183,7 +183,7 @@ int posliErrorPacket(int sockfd, struct sockaddr_in client, int errorCode, char 
     
     errorPacket[0] = 0;
     errorPacket[1] = 5;
-    errorPacket[2] = 0;         // Tady si to muzu dovolit -> errorCode je 0-7
+    errorPacket[2] = errorCode >> 8;     
     errorPacket[3] = errorCode;
     
     strcpy(errorPacket + 4, message);
@@ -457,6 +457,57 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
     return 1;
 }
 
+int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in server, char buffer[], int mode, const char cesta[], char location[]){
+    if(buffer[1] == 1){                 // READ
+        printf("dostal jsem packet pro cteni\n");
+        vypisRequest(client, mode, location, 1);
+        if(!zpracujRead(sockfd, client, location, mode)){
+            fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
+            free(location);
+            return 1;
+        }
+    } 
+    else if(buffer[1] == 2){            // WRITE
+        printf("dostal jsem packet pro zapis\n");
+        
+        // Uprava cesty
+        char cestaNew[(int) strlen(cesta) + 1];
+        char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
+    
+        for(int i = 0; i < (int) strlen(cesta); i++){
+            cestaNew[i] = cesta[i];
+        }
+        
+        cestaNew[(int) strlen(cesta)] = '\0';
+    
+        strcpy(cestaWrite, cestaNew);
+        if(location[0] == '.'){
+            strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
+        } else {
+            strcpy(cestaWrite + (int)(strlen(cesta)), location);
+        }
+
+        vypisRequest(client, mode, location, 2);
+
+        // if(!zpracujWrite(sockfd, server, client, cestaWrite, mode, buffer, readBytes)){
+        if(!zpracujWrite(sockfd, server, client, cestaWrite, mode)){
+            fprintf(stderr, "Nastala CHYBA pri zpracovani requestu WRITE.\n");
+            free(location);
+            return 1;
+        }
+
+        
+    } 
+    else {
+        fprintf(stderr, "CHYBA: Nejprve je potreba zaslat request packet.\n");
+        posliErrorPacket(sockfd, client, 0, "Nejprve je potreba zaslat request packet.");
+        free(location);
+        return 1;
+    }
+
+    return 0;
+}
+
 //===============================================================================================================================
 // ./tftp-server /WRITE
 
@@ -527,6 +578,7 @@ int main(int argc, char* argv[]){
     } 
     
     // ZPRACOVANI REQUESTU
+
     if(buffer[0] != 0){                
         fprintf(stderr, "CHYBA: Chybny TFTP packet.\n");
         posliErrorPacket(sockfd, client, 4, "Illegal TFTP operation.");
@@ -543,60 +595,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    if(buffer[1] == 1){                 // READ
-        printf("dostal jsem packet pro cteni\n");
-        vypisRequest(client, mode, location, 1);
-        if(!zpracujRead(sockfd, client, location, mode)){
-            fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
-            free(location);
-            return 1;
-        }
-    } 
-    else if(buffer[1] == 2){            // WRITE
-        printf("dostal jsem packet pro zapis\n");
-        
-        // Uprava cesty
-        char cestaNew[(int) strlen(cesta) + 1];
-        char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
-    
-        for(int i = 0; i < (int) strlen(cesta); i++){
-            cestaNew[i] = cesta[i];
-        }
-        
-        cestaNew[(int) strlen(cesta)] = '\0';
-    
-        strcpy(cestaWrite, cestaNew);
-        if(location[0] == '.'){
-            strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
-        } else {
-            strcpy(cestaWrite + (int)(strlen(cesta)), location);
-        }
-
-        vypisRequest(client, mode, location, 2);
-
-        // if(!zpracujWrite(sockfd, server, client, cestaWrite, mode, buffer, readBytes)){
-        if(!zpracujWrite(sockfd, server, client, cestaWrite, mode)){
-            fprintf(stderr, "Nastala CHYBA pri zpracovani requestu WRITE.\n");
-            free(location);
-            return 1;
-        }
-
-        
-    } 
-    else {
-        fprintf(stderr, "CHYBA: Nejprve je potreba zaslat request packet.\n");
-        posliErrorPacket(sockfd, client, 0, "Nejprve je potreba zaslat request packet.");
-        free(location);
-        return 1;
-    }
-    
-
-    // while(!interrupt){  // !!!!!!! loopuje to tady pri na interruptu
-    // }
-
-    // Accept request -> write = ACK a block number = 0
-    //                ->  read = prvni blok dat
-
+    if(zpracujRequest(sockfd, client, server, buffer, mode, cesta, location)) return 1;
 
     free(location);
     close(sockfd);
