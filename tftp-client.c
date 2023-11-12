@@ -266,10 +266,10 @@ int zjistiOptionLength(int opts[], int vals[]){
     }
     
     if(opts[1]){
-        if(!(vals[1] >= 1 && vals[1] <= 65464)){        //???????????
-            fprintf(stderr, "CHYBA: Hodnoty rozsireni mimo rozsah.\n");
-            return -1;
-        }
+        // if(!(vals[1] >= 1 && vals[1] <= 65464)){        //???????????
+        //     fprintf(stderr, "CHYBA: Hodnoty rozsireni mimo rozsah.\n");
+        //     return -1;
+        // }
         
         char value[10];
         sprintf(value, "%d", vals[1]);
@@ -289,40 +289,6 @@ int zjistiOptionLength(int opts[], int vals[]){
 
     return length;
 }
-
-
-// // Naplni RRQ/WRQ packet
-// void naplnRequestPacket(char rrq_packet[], const char filepath[], const char dest_filepath[], char mode[], int opcode){
-//     rrq_packet[0] = 0;
-//     int last_id = 2;
-    
-//     if(opcode == 1){                                    // RRQ
-//         rrq_packet[1] = 1;
-
-//         for(int i = 0; i < (int) strlen(filepath); i++){
-//             rrq_packet[last_id + i] = filepath[i];
-//         }
-
-//         last_id += (int) strlen(filepath);
-//     } else {                                            //WRQ
-//         rrq_packet[1] = 2;
-
-//         for(int i = 0; i < (int) strlen(dest_filepath); i++){
-//             rrq_packet[last_id + i] = dest_filepath[i];
-//         }
-
-//         last_id += (int) strlen(dest_filepath);
-//     }
-
-//     rrq_packet[last_id++] = '\0';
-    
-//     for(int i = 0; i < (int) strlen(mode); i++){        // Mode
-//         rrq_packet[last_id + i] = mode[i];
-//     }
-    
-//     last_id += strlen(mode);
-//     rrq_packet[last_id] = '\0';
-// }
 
 // Vypise obsah packetu
 void vypisPacket(char packet[], int length){
@@ -601,20 +567,20 @@ int main(int argc, char* argv[]){
         opcode = 2;     // WRITE
         requestLength = 2 + (int) strlen(dest_filepath) + 1 + (int) strlen(mode) + 1; // stdin
         if(!access(dest_filepath, F_OK & R_OK)){
-            fprintf(stderr, "CHYBA: 1Soubor %s jiz existuje, nebo nemate prava pro cteni.\n", dest_filepath);
+            fprintf(stderr, "CHYBA: Soubor %s jiz existuje, nebo nemate prava pro cteni.\n", dest_filepath);
             return 1;
         }
     } else {
         opcode = 1;     // READ
         requestLength = 2 + (int) strlen(filepath) + 1 + (int) strlen(mode) + 1;
         if(!access(dest_filepath, F_OK & W_OK)){
-            fprintf(stderr, "CHYBA: 2Soubor %s jiz existuje, nebo nemate prava pro zapis.\n", dest_filepath);
+            fprintf(stderr, "CHYBA: Soubor %s jiz existuje, nebo nemate prava pro zapis.\n", dest_filepath);
             return 1;
         }
     }
 
     int opts[3] = {0, 0, 0};            // timeout, tsize, blksize
-    int vals[3] = {10, 5444, 1024};
+    int vals[3] = {10, 0, 1024};
 
     int optLength = zjistiOptionLength(opts, vals);
     if(optLength == -1) return 1;
@@ -705,6 +671,8 @@ int main(int argc, char* argv[]){
     }
 
 //==================================================================================================================================================
+
+    return 0; // !!!!!!!!!!! pak smazat
 
     // PRIJMUTI
     char response[MAX_BUFFER_SIZE];
