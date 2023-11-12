@@ -30,17 +30,7 @@ void intHandler(int signum) {
 // Upravi socket na zaklade option timeout
 // Zavre stary, a otevre a nastavi novy socket -> nemelo by se nastavovat po aktivni komunikaci
 int upravSocket(int time, struct sockaddr_in client){
-
-    // Zavri stary socket
-    close(sockfd);
-
-    // Otevri novy s timeoutem
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);  
-
-    if(sockfd < 0){
-        fprintf(stderr, "CHYBA pri otevirani socketu.\n");
-        return 0;
-    }
+    (void) client;
 
     // Nastaveni timeoutu - default 10s
     struct timeval timeout;
@@ -48,22 +38,7 @@ int upravSocket(int time, struct sockaddr_in client){
     timeout.tv_usec = 0;
 
     if(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) == -1) {
-        fprintf(stderr, "Nastala chyba pri nastavovani socketu.\n");
-        close(sockfd);
-        return 0;
-    }
-
-    // kvuli adrese
-    int reuse = 1;          // 1 povoli znovupouziti
-    if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
-        fprintf(stderr, "Nastala chyba pri nastavovani socketu.\n");
-        close(sockfd);
-        return 0;
-    }
-
-    // SOCKET BIND
-    if(bind(sockfd, (struct sockaddr*) &client, sizeof(client)) < 0){
-        fprintf(stderr, "1111Nastala CHYBA pri bindovani socketu: %s.\n", strerror(errno));
+        fprintf(stderr, "Nastala chyba pri nastavovani socketu. %s\n", strerror(errno));
         close(sockfd);
         return 0;
     }
@@ -276,11 +251,6 @@ int zjistiOptionLength(int opts[], int vals[]){
     }
     
     if(opts[1]){
-        // if(!(vals[1] >= 1 && vals[1] <= 65464)){        //???????????
-        //     fprintf(stderr, "CHYBA: Hodnoty rozsireni mimo rozsah.\n");
-        //     return -1;
-        // }
-        
         char value[10];
         sprintf(value, "%d", vals[1]);
         length += strlen(value) + 7;
@@ -429,7 +399,7 @@ int zkontrolujANastavOption(char option[], char readValue[], int vals[], struct 
         } 
         else {
             max_data_size = value;
-            max_buffer_size = max_data_size + 1024;
+            max_buffer_size = max_data_size + 128;
             return 3;
         }
     } 
@@ -540,7 +510,6 @@ int zpracujRead(int sockfd, struct sockaddr_in server, struct sockaddr_in client
     FILE* file;
     socklen_t serverAddressLength = sizeof(server);
     
-    printf("-------------- tu1\n");
     toLowerString(mode);
     int modeNum     = (strcmp(mode, "octet") == 0) ? 2 : 1;
     int blockNumber = 1;
@@ -720,8 +689,8 @@ int main(int argc, char* argv[]){
         }
     }
 
-    int opts[3] = {0, 1, 1};            // timeout, tsize, blksize
-    int vals[3] = {5, 1, 1024};
+    int opts[3] = {1, 1, 1};            // timeout, tsize, blksize
+    int vals[3] = {5, 2, 1024};
 
     int optLength = zjistiOptionLength(opts, vals);
     if(optLength == -1) return 1;
@@ -777,7 +746,7 @@ int main(int argc, char* argv[]){
     inet_aton(serverIP, &server.sin_addr);
 
     // SOCKETY
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(sockfd < 0){
         fprintf(stderr, "Nastala CHYBA pri otevirani socketu.\n");
         return 1;
@@ -891,7 +860,6 @@ int main(int argc, char* argv[]){
             } 
             else {  // OACK v pohode, posli DATA
                 // !!!!Byly options, vytvori se radsi novy buffer (kvuli blksize)
-
                 char responseNew[max_buffer_size];
                 memset(responseNew, 0 , max_buffer_size); 
                 
@@ -936,7 +904,6 @@ int main(int argc, char* argv[]){
         }
     }
 
-    printf("konec\n");
     close(sockfd);
     return 0;
 }

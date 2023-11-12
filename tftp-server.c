@@ -379,17 +379,6 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
     buffer[2] = blockNumber >> 8;
     buffer[3] = blockNumber;
 
-    // Kontola souboru pred otevrenim
-    // if(access(location, F_OK)){     // Existence
-    //     posliErrorPacket(sockfd, client, 1, "File not found.");
-    //     return 0;
-    // }
-
-    // if(access(location, R_OK)){     // Prava
-    //     posliErrorPacket(sockfd, client, 2, "Access violation.");
-    //     return 0;
-    // }
-
     readFile = (mode == 2) ? fopen(location, "rb") : fopen(location, "r");
 
     if(readFile == NULL){
@@ -468,7 +457,7 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
 // Zpracuje WRITE -> Z pohledu serveru: Otevre soubor a posila data pakcety
 //                -> Pri mode netascii zpracovava \r a \n
 int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char location[], int mode){
-    printf("ve write\n");
+
     FILE* file;
     socklen_t clientAddressLength = sizeof(client);
     int blockNumber = 0;
@@ -477,12 +466,6 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
 
     char data[max_data_size + 4];
     memset(data, 0, max_data_size + 4);
-    
-    // // Kontola souboru pred otevrenim
-    // if(!access(location, F_OK)){     // Existence
-    //     posliErrorPacket(sockfd, client, 6, "File already exists.");
-    //     return 0;
-    // }
 
     // 2 == octet 1 == netascii 
     file = (mode == 2) ? fopen(location, "wb") : fopen(location, "w");
@@ -621,7 +604,7 @@ int rozhodniANastavOptions(int magicNumber[], int optValues[], struct sockaddr_i
     if(magicNumber[2]){   // blksize
         if(optValues[2] >= 8 && optValues[2] <= 65464){
             max_data_size   = optValues[2];
-            max_buffer_size = max_data_size + 1024;
+            max_buffer_size = max_data_size + 128;
             
             char value[20];
             sprintf(value, "%d", optValues[2]);
@@ -774,7 +757,7 @@ int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in ser
             return 1;
         }
 
-        if(!access(location, R_OK)){     // Prava
+        if(access(location, R_OK)){     // Prava
             posliErrorPacket(sockfd, client, 2, "Access violation.");
             return 1;
         }
