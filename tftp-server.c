@@ -229,6 +229,7 @@ int posliACK(int sockfd, struct sockaddr_in client, int blockNumber){
     return 1;
 }
 
+// Posle OACK
 int posliOACK(int sockfd, struct sockaddr_in client, int optValues[], int oackLength){
     char oack[oackLength];
 
@@ -304,8 +305,7 @@ void vypisData(struct sockaddr_in client, struct sockaddr_in server, int blockID
 
 // Vypise zpravu ve tvaru RRQ {SRC_IP}:{SRC_PORT} "{FILEPATH}" {MODE} {$OPTS}
 //                   nebo WRQ {SRC_IP}:{SRC_PORT} "{FILEPATH}" {MODE} {$OPTS}
-// !!!!!!!!!!!!!!!!!!!!DODELAT options
-void vypisRequest(struct sockaddr_in client, int mode, char filepath[], int request){
+void vypisRequest(struct sockaddr_in client, int mode, char filepath[], int request, int optionArray[]){
     
     char *srcIP  = inet_ntoa(client.sin_addr);
     int srcPort = ntohs(client.sin_port); 
@@ -318,31 +318,44 @@ void vypisRequest(struct sockaddr_in client, int mode, char filepath[], int requ
     }
 
     if(request == 1){
-        fprintf(stderr, "RRQ %s:%d \"%s\" %s\n", srcIP, srcPort, filepath, modeC);
+        fprintf(stderr, "RRQ %s:%d \"%s\" %s ", srcIP, srcPort, filepath, modeC);
     } 
     else {
-        fprintf(stderr, "WRQ %s:%d \"%s\" %s\n", srcIP, srcPort, filepath, modeC);
+        fprintf(stderr, "WRQ %s:%d \"%s\" %s ", srcIP, srcPort, filepath, modeC);
     }
+
+    if(optionArray[0]){
+        fprintf(stderr, "timeout = %d ", optionArray[0]);
+    }
+
+    if(optionArray[1] != -1){
+        fprintf(stderr, "tsize = %d ", optionArray[1]);
+    }
+
+    if(optionArray[2]){
+        fprintf(stderr, "blksize = %d ", optionArray[2]);
+    }
+
+    fprintf(stderr, "\n");
 }
 
 // Zpracuje READ -> Z pohledu serveru: Otevre soubor a posila data pakcety
 int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode, int options){
-
+    
     FILE *readFile;
     socklen_t clientAddressLength = sizeof(client);
     int readBytes;
     int blockNumber = 1;
-    char buffer[max_data_size + 4];                 // 512 + opcode + block number
-    char helpBuffer[max_data_size];                 // 512 + opcode + block number
+    char buffer[max_data_size + 4];                 
+    char helpBuffer[max_data_size];                 
     char response[max_buffer_size];
     char backup[max_data_size + 4];
-    memset(buffer, 0 , max_data_size + 4);          // Vynuluje buffer
-    memset(helpBuffer, 0 , max_data_size);          // Vynuluje buffer
+    memset(buffer, 0 , max_data_size + 4);         
+    memset(helpBuffer, 0 , max_data_size);        
     memset(backup, 0 , max_data_size + 4);           
     memset(response, 0 , max_buffer_size);            
 
-    // Options -> 1 = nic se neprijalo -> klasika
-    // Options -> 2 = cekej na ACK 0 -> pak klasika
+    // Options > 0 -> byly optiony, cekej na ack 0
     if(options == 2){
         readBytes = recvfrom(sockfd, response, max_buffer_size, 0, (struct sockaddr*) &client, &clientAddressLength);
 
@@ -352,7 +365,10 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
             return 0; 
         } 
 
-        if(!(response[1] == 4 && response[2] == 0 && response[3] == 0)){   // neprisel ack 0
+        if(response[1] == 4 && response[2] == 0 && response[3] == 0){   // neprisel ack 0
+            vypisACK(client, 0);
+        } 
+        else {    
             posliErrorPacket(sockfd, client, 8, "TFTP option rejected");
             return 0;
         }
@@ -364,15 +380,15 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
     buffer[3] = blockNumber;
 
     // Kontola souboru pred otevrenim
-    if(access(location, F_OK)){     // Existence
-        posliErrorPacket(sockfd, client, 1, "File not found.");
-        return 0;
-    }
+    // if(access(location, F_OK)){     // Existence
+    //     posliErrorPacket(sockfd, client, 1, "File not found.");
+    //     return 0;
+    // }
 
-    if(access(location, R_OK)){     // Prava
-        posliErrorPacket(sockfd, client, 2, "Access violation.");
-        return 0;
-    }
+    // if(access(location, R_OK)){     // Prava
+    //     posliErrorPacket(sockfd, client, 2, "Access violation.");
+    //     return 0;
+    // }
 
     readFile = (mode == 2) ? fopen(location, "rb") : fopen(location, "r");
 
@@ -409,14 +425,17 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
             strncpy(buffer + 4, helpBuffer, max_data_size);         // Slozeni packetu
             strncpy(backup, buffer, max_data_size + 4);             // Zaloha
             if(!posliPacket(sockfd, buffer, bytes + 4, client)) return 0;
+            printf("---------posilam data %d\n", blockNumber);
         } 
         else {    // Nastala chyba, je potreba odeslat znovu
             if(!posliPacket(sockfd, backup, bytes + 4, client)) return 0;
+            printf("---------znovu posilam data\n");
             resend = 0;
         }
 
         // Prijimani ACKu
         readBytes = recvfrom(sockfd, response, max_buffer_size, 0, (struct sockaddr*) &client, &clientAddressLength);
+        printf("--------prijmul jsem packet\n");
 
         if(readBytes == -1){
             fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
@@ -426,6 +445,7 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
         
         if(response[0] == 0 && response[1] == 4){
             int lastACK = ((int)buffer[2] << 8) + (int)buffer[3];
+            printf("--------- odeslan packet %d, dostal jsem ack %d\n", blockNumber, lastACK);
             vypisACK(client, blockNumber);
 
             if(lastACK != blockNumber)     // Posli znovu -> ACKnut minuly blok
@@ -448,7 +468,7 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
 // Zpracuje WRITE -> Z pohledu serveru: Otevre soubor a posila data pakcety
 //                -> Pri mode netascii zpracovava \r a \n
 int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in client, char location[], int mode){
-
+    printf("ve write\n");
     FILE* file;
     socklen_t clientAddressLength = sizeof(client);
     int blockNumber = 0;
@@ -457,12 +477,12 @@ int zpracujWrite(int sockfd, struct sockaddr_in server, struct sockaddr_in clien
 
     char data[max_data_size + 4];
     memset(data, 0, max_data_size + 4);
-
-    // Kontola souboru pred otevrenim
-    if(!access(location, F_OK)){     // Existence
-        posliErrorPacket(sockfd, client, 6, "File already exists.");
-        return 0;
-    }
+    
+    // // Kontola souboru pred otevrenim
+    // if(!access(location, F_OK)){     // Existence
+    //     posliErrorPacket(sockfd, client, 6, "File already exists.");
+    //     return 0;
+    // }
 
     // 2 == octet 1 == netascii 
     file = (mode == 2) ? fopen(location, "wb") : fopen(location, "w");
@@ -545,17 +565,15 @@ long zjistiDelkuSouboru(char location[]){
     if(size == -1) return 0;
 
     fclose(file);
-    printf("returnuju %ld\n", size);
     return size;
 }
-
 
 // Rozhodni a spln options + otestuj hodnoty jestli mohou byt!!!!!!!!!!!!!!
 // Vraci 0 pri chybe
 //       1 pokud se nic neprijalo
 //       2 pokud se poslal OACK
 int rozhodniANastavOptions(int magicNumber[], int optValues[], struct sockaddr_in server, struct sockaddr_in client, char location[]){
-    
+
     // request -> 1 == read, 2 == write
 
     // timeout -> optValues[0]
@@ -566,7 +584,7 @@ int rozhodniANastavOptions(int magicNumber[], int optValues[], struct sockaddr_i
 
     if(magicNumber[0]){   // timeout
         if(optValues[0] >= 1 && optValues[0] <= 255){
-            upravSocket(optValues[0], server);
+            if(!upravSocket(optValues[0], server)) return 0;
             
             char value[20];
             sprintf(value, "%d", optValues[0]);
@@ -586,13 +604,17 @@ int rozhodniANastavOptions(int magicNumber[], int optValues[], struct sockaddr_i
             char value[30];
             sprintf(value, "%d", length);
             oackLength += 5 + strlen(value) + 2;
-
             optValues[1] = length;
 
         } else {
             if(optValues[1] > MAX_TSIZE){
                 return 0;
             }
+
+            char value[30];
+            sprintf(value, "%d", optValues[1]);
+            oackLength += 5 + strlen(value) + 2;
+            optValues[1] = optValues[1];
         }
     }
 
@@ -610,9 +632,8 @@ int rozhodniANastavOptions(int magicNumber[], int optValues[], struct sockaddr_i
         }
     }
 
-    // Je nejaky option?
+    // Je nejaky option? -> pridalo/nepridalo se neco
     if(oackLength != 2){
-        printf("posilam OACK\n");
         if(!posliOACK(sockfd, client, optValues, oackLength)) return 0;
         return 2;
     }
@@ -622,20 +643,19 @@ int rozhodniANastavOptions(int magicNumber[], int optValues[], struct sockaddr_i
 }
 
 // Zpracuje options
-// Vraci 0 pri chybe
+// Vraci 0 pri chybe nebo cislo (i soucet) podle options (timeout (4), tsize (2), blksize (1))
 // Pokud jsou nastaveny nejake optiony, posle to funkci rozhodniANastavOptions
 // Pokud precte nejaky co nezna, ignoruje ho
-int zpracujOptions(char buffer[], int readBytes, struct sockaddr_in client, struct sockaddr_in server, char location[]){
+int zpracujOptions(char buffer[], int readBytes, struct sockaddr_in client, struct sockaddr_in server, char location[], int optionArray[]){
 
     int nulls        = 0;
     int optionsExist = 0;
-
+    int returnValue  = 0;
     int request = (int) buffer[1];  // rrq/wrq
 
-    printf("\nHLEDAM OPTIONS\n");
     int i = 2;
     
-    // Dosjde se k \0 za mode, a pokracuje?
+    // Dojde se k \0 za mode, a pokracuje?
     while(i < readBytes){
         if(buffer[i] == '\0') nulls++;
         if(nulls == 2 && (i + 1) < readBytes){          
@@ -657,9 +677,8 @@ int zpracujOptions(char buffer[], int readBytes, struct sockaddr_in client, stru
 
         // Nacteni optionu
         char option[10];
-        memset(option, '0', 10);
+        memset(option, '\0', 10);
         strcpy(option, buffer + i);
-        printf("option: %s\n", option);
         
         // Je tam i value?
         if((i + (int)strlen(option) + 1) < readBytes){           
@@ -670,21 +689,21 @@ int zpracujOptions(char buffer[], int readBytes, struct sockaddr_in client, stru
         
         // Nacte se, a prevede value
         char value[20];
-        memset(value, '0', 20);
+        memset(value, '\0', 20);
         strcpy(value, buffer + i);
         int valuee = atoi(value);
-        printf("valuee: %d\n", valuee);
         i += strlen(value);
         
         // Zjisti se co to bylo za value
         if(strcmp(option, "timeout") == 0){
             optNumber[0] = 1;
             optValues[0] = valuee;
+            optionArray[0] = valuee;
+            returnValue += 4;
         }
 
         if(strcmp(option, "tsize") == 0){
             optNumber[1] = 1;  
-
             if((valuee <= 0 || valuee > MAX_TSIZE) && request == 2){        // Preteklo to, nebo je to vetsi nez povolena velikost
                 // chce to delku souboru pri write -> chyba
                 return 0;
@@ -695,12 +714,21 @@ int zpracujOptions(char buffer[], int readBytes, struct sockaddr_in client, stru
                 return 0;
             }
 
+            if(valuee != 0 && request == 1){
+                // posila to velikost pri cteni
+                return 0;
+            }
+
             optValues[1] = valuee;
+            optionArray[1] = valuee;
+            returnValue += 2;
         }
         
         if(strcmp(option, "blksize") == 0){
             optNumber[2] = 1;  
             optValues[2] = valuee;
+            optionArray[2] = valuee;
+            returnValue += 1;
         } 
 
         // Jsou tam dalsi?
@@ -713,26 +741,70 @@ int zpracujOptions(char buffer[], int readBytes, struct sockaddr_in client, stru
 
     if(optNumber[0] || optNumber[1] || optNumber[2]) rozhodniANastavOptions(optNumber, optValues, server, client, location);
 
-    // printf("\nkouzelny cislo %d\n", optNumber);
-    printf("hodnoty: %d %d %d\n", optValues[0], optValues[1], optValues[2]);
-    return 1;
+    return returnValue;
 }
 
 // Zpravuje request
 int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in server, char buffer[], int readBytes, int mode, const char cesta[], char location[]){
     
-    int options = zpracujOptions(buffer, readBytes, client, server, location);
+    // cesta    -> root_dirpath -> kam se to bude ukladat na serveru
+    // location -> filename
+
+    // Uprava cesty pro zapis
+    char cestaNew[(int) strlen(cesta) + 1];
+    char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
+
+    for(int i = 0; i < (int) strlen(cesta); i++){
+        cestaNew[i] = cesta[i];
+    }
+    
+    cestaNew[(int) strlen(cesta)] = '\0';
+
+    strcpy(cestaWrite, cestaNew);
+    if(location[0] == '.'){
+        strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
+    } else {
+        strcpy(cestaWrite + (int)(strlen(cesta)), location);
+    }
+
+    // Kontrola souboru
+    if(buffer[1] == 1){                 // READ
+        if(access(location, F_OK)){     // Existence
+            posliErrorPacket(sockfd, client, 1, "File not found.");
+            return 1;
+        }
+
+        if(!access(location, R_OK)){     // Prava
+            posliErrorPacket(sockfd, client, 2, "Access violation.");
+            return 1;
+        }
+    } else {
+        if(buffer[1] == 2){             // WRITE
+            if(!access(cestaWrite, F_OK)){     // Existence
+                posliErrorPacket(sockfd, client, 6, "File already exists.");
+                return 1;
+            }
+
+            FILE* file = (mode == 2) ? fopen(cestaWrite, "wb") : fopen(cestaWrite, "w");
+
+            if(file == NULL){
+                posliErrorPacket(sockfd, client, 0, "Invalid filepath.");
+                return 1;
+            }
+        }
+    }
+
+    int optionArray[3] = {0, -1, 0};
+    int options = zpracujOptions(buffer, readBytes, client, server, location, optionArray);
 
     if(!options){
         posliErrorPacket(sockfd, client, 8, "TFTP option rejected.");
         return 1;
     }
 
-    // return 0; //!!!!!!!! pak smazat
-
     if(buffer[1] == 1){                 // READ
         printf("dostal jsem packet pro cteni\n");
-        vypisRequest(client, mode, location, 1);
+        vypisRequest(client, mode, location, 1, optionArray);
 
         if(!zpracujRead(sockfd, client, location, mode, options)){
             fprintf(stderr, "Nastala CHYBA pri zpracovani requestu.\n");
@@ -744,23 +816,23 @@ int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in ser
         printf("dostal jsem packet pro zapis\n");
         
         // Uprava cesty
-        char cestaNew[(int) strlen(cesta) + 1];
-        char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
+        // char cestaNew[(int) strlen(cesta) + 1];
+        // char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
     
-        for(int i = 0; i < (int) strlen(cesta); i++){
-            cestaNew[i] = cesta[i];
-        }
+        // for(int i = 0; i < (int) strlen(cesta); i++){
+        //     cestaNew[i] = cesta[i];
+        // }
         
-        cestaNew[(int) strlen(cesta)] = '\0';
+        // cestaNew[(int) strlen(cesta)] = '\0';
     
-        strcpy(cestaWrite, cestaNew);
-        if(location[0] == '.'){
-            strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
-        } else {
-            strcpy(cestaWrite + (int)(strlen(cesta)), location);
-        }
+        // strcpy(cestaWrite, cestaNew);
+        // if(location[0] == '.'){
+        //     strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
+        // } else {
+        //     strcpy(cestaWrite + (int)(strlen(cesta)), location);
+        // }
 
-        vypisRequest(client, mode, location, 2);
+        vypisRequest(client, mode, location, 2, optionArray);
 
         // if(!zpracujWrite(sockfd, server, client, cestaWrite, mode, buffer, readBytes)){
         if(!zpracujWrite(sockfd, server, client, cestaWrite, mode)){
@@ -866,9 +938,6 @@ int main(int argc, char* argv[]){
         free(location);
         return 1;
     }
-
-    // Zpracovani options
-    
 
     if(zpracujRequest(sockfd, client, server, buffer, readBytes, mode, cesta, location)) return 1;
 
