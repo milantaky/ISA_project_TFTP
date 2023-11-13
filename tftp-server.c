@@ -145,7 +145,7 @@ int zkontrolujMode(char buffer[], int offset){
 
 // Nacte lokaci (filename) z bufferu do dest
 // - Alokuje dest
-void nactiLokaci(char buffer[], char *dest[]){
+int nactiLokaci(char buffer[], char *dest[]){
     char lokace[300] = {0};
     int i = 2;
     int j = 0;
@@ -160,7 +160,15 @@ void nactiLokaci(char buffer[], char *dest[]){
     
     lokace[j] = '\0';
     
-    *dest = strdup(lokace);
+    *dest = (char *)malloc(strlen(lokace) + 1);
+
+    if(dest == NULL){
+        fprintf(stderr, "Nastala CHYBA pri alokovani pameti.\n");
+        return 0;
+    }
+
+    strcpy(*dest, lokace);
+    return 1;
 }
 
 // Odesle packet
@@ -912,7 +920,10 @@ int main(int argc, char* argv[]){
         return 1;
     } 
 
-    nactiLokaci(buffer, &location);      
+    if(!nactiLokaci(buffer, &location)){
+        posliErrorPacket(sockfd, client, 3, "Disk full or allocation exceeded.");
+        return 1;
+    }      
     offset = 3 + (int) strlen(location);            // 2 kvuli opcode a 1 je \0 za lokaci
 
     if(!(mode = zkontrolujMode(buffer, offset))){          // 2 == octet 1 == netascii            
