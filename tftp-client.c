@@ -13,6 +13,7 @@
 #include <net/ethernet.h>       
 #include <unistd.h>
 #include <ctype.h>
+#include <sys/types.h>
 
 #define MAX_TSIZE 10000000      // Max velikost prijimaneho souboru -> 10 MB
 
