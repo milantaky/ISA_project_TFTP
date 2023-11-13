@@ -27,6 +27,8 @@ int max_buffer_size = 1024;
 int max_data_size   = 512;
 int sockfd;
 
+int gethostname(char *name, size_t len);
+
 // Zpracovani interruptu
 void intHandler(int signum) {
     (void)signum;   // musi to byt takhle, jinak compiler nadava
@@ -731,24 +733,7 @@ int main(int argc, char* argv[]){
 
 //===================================================
 
-// ============= Ziskani IP adres
-    // CLIENT
-    char clientHostname[100];
-    struct hostent *clientHost;
-    char *clientIP;
-
-    if (gethostname(clientHostname, sizeof(clientHostname)) == 0) { // Ziskej info o hostovi
-        clientHost = gethostbyname(clientHostname);
-
-        if (clientHost != NULL) { // Preved na IP
-            clientIP = inet_ntoa(*((struct in_addr*) clientHost->h_addr_list[0]));
-            printf("Moje IP: %s\n", clientIP);
-        }
-    } else {
-        fprintf(stderr, "CHYBA pri ziskavani IP adresy klienta\n");
-        return 1;
-    }
-
+// ============= Ziskani IP adresy
     // SERVER - (funguje pro hostname, i pro adresu)
     struct hostent *serverHostname;
     char *serverIP;
@@ -768,7 +753,8 @@ int main(int argc, char* argv[]){
     struct sockaddr_in client;
     client.sin_family      = AF_INET;
     client.sin_port        = htons(clientTID);
-    inet_aton(clientIP, &client.sin_addr);
+    client.sin_addr.s_addr = INADDR_ANY;
+    // inet_aton(clientIP, &client.sin_addr);
 
     struct sockaddr_in server;
     server.sin_family      = AF_INET;
