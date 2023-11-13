@@ -22,11 +22,13 @@ Po přeložení souborů **tftp-server.c**, a **tftp-client.c** příkazem `make
 Toto jsou příkazy ke spuštění s přepínači:
 
 Server: `./tftp-server [-p port] root_dirpath`
+
 Kde:
 *  `-p` je místní port, na kterém bude server očekávat příchozí spojení
 *  `root_dirpath` je cesta k adresáři, pod kterým se budou ukládat příchozí soubory
 
 Klient: `./tftp-client -h hostname [-p port] [-f filepath] -t dest_filepath`
+
 Kde:
 *  `-h` je IP adresa/doménový název vzdáleného serveru
 *  `-p` je port vzdáleného serveru
