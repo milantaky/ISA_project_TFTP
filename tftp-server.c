@@ -871,7 +871,7 @@ int main(int argc, char* argv[]){
     timeout.tv_usec = 0;
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) == -1) {
-        fprintf(stderr, "Nastala chyba pri nastavovani socketu.\n");
+        fprintf(stderr, "Nastala CHYBA pri nastavovani socketu.\n");
         close(sockfd);
         return 1;
     }
