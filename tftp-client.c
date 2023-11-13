@@ -195,6 +195,8 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], const char des
     last_id += strlen(mode);
     rrq_packet[last_id] = '\0';
     
+
+    // OPTOINS
     if(opts[0]){
         last_id++;
         strcpy(rrq_packet + last_id, "timeout");
@@ -665,7 +667,7 @@ int main(int argc, char* argv[]){
     const char* dest_filepath = NULL;                    // WRITE -> soubor u clienta
     const char* filepath      = NULL;                    // READ  -> soubor na serveru
     char mode[]               = "octet";
-    int opcode                = 0;
+    int opcode                = 0;                      // 1 == READ, 2 == WRITE
 
     if(!zkontrolujANastavArgumenty(argc, argv, &port, &hostname, &filepath, &dest_filepath)) return 1;
 
@@ -689,8 +691,29 @@ int main(int argc, char* argv[]){
         }
     }
 
-    int opts[3] = {1, 1, 1};            // timeout, tsize, blksize
+    int opts[3] = {0, 1, 0};            // timeout, tsize, blksize
     int vals[3] = {5, 2, 1024};
+
+    // Zjisteni delky souboru
+    if(opts[1] && opcode == 2){
+
+        // Dojdi na konec souboru
+        if (fseek(stdin, 0, SEEK_END) != 0) {
+            fprintf(stderr, "Nastala CHYBA pri zjistovani delky souboru.\n");
+            return 1;
+        }
+
+        // Hodnota fd = pocet bytu souboru
+        long size = ftell(stdin);
+        if (size == -1) {
+            fprintf(stderr, "Nastala CHYBA pri zjistovani delky souboru.\n");
+            return 1;
+        }
+
+        vals[1] = (int) size;
+        // Vrat pozici na zacatek
+        rewind(stdin);
+    }
 
     int optLength = zjistiOptionLength(opts, vals);
     if(optLength == -1) return 1;
