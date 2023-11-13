@@ -16,6 +16,8 @@
 #include <sys/types.h>
 #include <stdint.h>
 
+#define u_char unsigned char
+
 #define MAX_TSIZE 10000000      // Max velikost prijimaneho souboru -> 10 MB
 
 int max_buffer_size = 1024;
