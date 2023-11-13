@@ -214,7 +214,6 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], const char des
         
         char value[10];
         sprintf(value, "%d", vals[0]);
-        // strncpy(rrq_packet + last_id, value, strlen(value));
         strcpy(rrq_packet + last_id, value);
         last_id += strlen(value);
         rrq_packet[last_id] = '\0';
@@ -229,7 +228,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], const char des
         
         char value[10];
         sprintf(value, "%d", vals[1]);
-        strncpy(rrq_packet + last_id, value, strlen(value));
+        strcpy(rrq_packet + last_id, value);
         last_id += strlen(value);
         rrq_packet[last_id] = '\0';
     }
@@ -242,7 +241,7 @@ void naplnRequestPacket(char rrq_packet[], const char filepath[], const char des
         
         char value[10];
         sprintf(value, "%d", vals[2]);
-        strncpy(rrq_packet + last_id, value, strlen(value));
+        strcpy(rrq_packet + last_id, value);
         last_id += strlen(value);
         rrq_packet[last_id] = '\0';
     }
