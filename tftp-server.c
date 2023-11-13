@@ -886,7 +886,7 @@ int main(int argc, char* argv[]){
 
     // SOCKET BIND
     if(bind(sockfd, (struct sockaddr*) &server, sizeof(server)) < 0){
-        fprintf(stderr, "Nastala CHYBA pri bindovani socketu.\n");
+        fprintf(stderr, "Nastala CHYBA pri bindovani socketu. %s\n", strerror(errno));
         close(sockfd);
         return 1;
     }
