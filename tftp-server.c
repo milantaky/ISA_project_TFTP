@@ -7,7 +7,7 @@
 #include <netinet/udp.h>      
 #include <errno.h>           // ???
 #include <signal.h>             // interrupt
-#include <time.h>               // na timeout?
+#include <sys/time.h>               // na timeout?
 #include <arpa/inet.h>          // htons
 #include <net/ethernet.h>       // ???
 #include <unistd.h>

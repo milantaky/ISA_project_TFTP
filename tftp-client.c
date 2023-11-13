@@ -7,7 +7,7 @@
 #include <netinet/udp.h>      
 #include <errno.h>           
 #include <signal.h>             // interrupt
-#include <time.h>               
+#include <sys/time.h>               
 #include <pcap/pcap.h>          // gethostbyname,...
 #include <arpa/inet.h>          
 #include <net/ethernet.h>       
@@ -691,7 +691,7 @@ int main(int argc, char* argv[]){
         }
     }
 
-    int opts[3] = {0, 1, 0};            // timeout, tsize, blksize
+    int opts[3] = {1, 0, 0};            // timeout, tsize, blksize
     int vals[3] = {5, 2, 1024};
 
     // Zjisteni delky souboru
