@@ -18,7 +18,7 @@ být v souladu s rozšířeními:
   
 Spouštění:
 ---
-Po přeložení souborů **tftp-server.c**, a **tftp=client.c** příkazem `make` dostanete 2 spustitelné soubory.
+Po přeložení souborů **tftp-server.c**, a **tftp-client.c** příkazem `make` dostanete 2 spustitelné soubory.
 Toto jsou příkazy ke spuštění s přepínači:
 
 `./tftp-server [-p port] root_dirpath`
@@ -29,6 +29,7 @@ Kde:
 
 `./tftp-client -h hostname [-p port] [-f filepath] -t dest_filepath`
 
+Kde:
 *  `-h` je IP adresa/doménový název vzdáleného serveru
 *  `-p` je port vzdáleného serveru
 pokud není specifikován předpokládá se výchozí dle specifikace
