@@ -1,3 +1,7 @@
+typedef unsigned char u_char;
+typedef unsigned int  u_int;
+typedef unsigned short u_short;
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +20,6 @@
 #include <sys/types.h>
 #include <stdint.h>
 
-#define u_char unsigned char
 
 #define MAX_TSIZE 10000000      // Max velikost prijimaneho souboru -> 10 MB
 
