@@ -27,6 +27,8 @@ int max_buffer_size = 1024;
 int max_data_size   = 512;
 int sockfd;
 
+time_t time(time_t *tloc);
+int inet_aton(const char *cp, struct in_addr *inp);
 int gethostname(char *name, size_t len);
 
 // Zpracovani interruptu
