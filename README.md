@@ -92,6 +92,7 @@ Po přijetí/odeslání finálního packetu se spojení i klient ukončí.
 - Makefile
 - tftp-client.c
 - tftp-server.c
+- manual.pdf
 
 **Zdroje**
 ===
