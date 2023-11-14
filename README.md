@@ -85,6 +85,14 @@ Po přijetí/odeslání finálního packetu se spojení i klient ukončí.
 - Pokud nastane před/při přenosu nějaká chyba, strana na které nastala chyba odešle error packet s příslušným chybovým kódem, případně se vypíše chyba na standardní chybový výstup, a spojení se ukončí.
 - Funguje i zachycování signálů přerušení (Ctrl + C), při jeho zpracování se druhé straně odešle chybový packet, a spojení se ukončí.
 
+## Seznam odevzdaných souborů
+- Složka WRITE
+- Složka CLIENT
+- Složka READ + test.txt
+- Makefile
+- tftp-client.c
+- tftp-server.c
+
 **Zdroje**
 ===
 [1] RFC 1348 - (https://datatracker.ietf.org/doc/html/rfc1350)
