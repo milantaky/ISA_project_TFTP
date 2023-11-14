@@ -93,6 +93,7 @@ Po přijetí/odeslání finálního packetu se spojení i klient ukončí.
 - tftp-client.c
 - tftp-server.c
 - manual.pdf
+- README.md
 
 **Zdroje**
 ===
