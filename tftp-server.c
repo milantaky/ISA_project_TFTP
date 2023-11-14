@@ -422,17 +422,14 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
             strncpy(buffer + 4, helpBuffer, max_data_size);         // Slozeni packetu
             strncpy(backup, buffer, max_data_size + 4);             // Zaloha
             if(!posliPacket(sockfd, buffer, bytes + 4, client)) return 0;
-            printf("---------posilam data %d\n", blockNumber);
         } 
         else {    // Nastala chyba, je potreba odeslat znovu
             if(!posliPacket(sockfd, backup, bytes + 4, client)) return 0;
-            printf("---------znovu posilam data\n");
             resend = 0;
         }
 
         // Prijimani ACKu
         readBytes = recvfrom(sockfd, response, max_buffer_size, 0, (struct sockaddr*) &client, &clientAddressLength);
-        printf("--------prijmul jsem packet\n");
 
         if(readBytes == -1){
             fprintf(stderr, "Nastala CHYBA pri prijimani packetu.\n");
@@ -442,7 +439,6 @@ int zpracujRead(int sockfd, struct sockaddr_in client, char location[], int mode
         
         if(response[0] == 0 && response[1] == 4){
             int lastACK = ((int)buffer[2] << 8) + (int)buffer[3];
-            printf("--------- odeslan packet %d, dostal jsem ack %d\n", blockNumber, lastACK);
             vypisACK(client, blockNumber);
 
             if(lastACK != blockNumber)     // Posli znovu -> ACKnut minuly blok
@@ -805,23 +801,6 @@ int zpracujRequest(int sockfd, struct sockaddr_in client, struct sockaddr_in ser
     } 
     else if(buffer[1] == 2){            // WRITE
         printf("dostal jsem packet pro zapis\n");
-        
-        // Uprava cesty
-        // char cestaNew[(int) strlen(cesta) + 1];
-        // char cestaWrite[(int)(strlen(location) + strlen(cesta)) + 1];
-    
-        // for(int i = 0; i < (int) strlen(cesta); i++){
-        //     cestaNew[i] = cesta[i];
-        // }
-        
-        // cestaNew[(int) strlen(cesta)] = '\0';
-    
-        // strcpy(cestaWrite, cestaNew);
-        // if(location[0] == '.'){
-        //     strcpy(cestaWrite + (int)(strlen(cesta)), location + 1);
-        // } else {
-        //     strcpy(cestaWrite + (int)(strlen(cesta)), location);
-        // }
 
         vypisRequest(client, mode, location, 2, optionArray);
 

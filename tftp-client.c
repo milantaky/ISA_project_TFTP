@@ -703,8 +703,8 @@ int main(int argc, char* argv[]){
         }
     }
 
-    int opts[3] = {1, 0, 0};            // timeout, tsize, blksize
-    int vals[3] = {5, 2, 1024};
+    int opts[3] = {1, 1, 1};            // timeout, tsize, blksize
+    int vals[3] = {5, 0, 1024};
 
     // Zjisteni delky souboru
     if(opts[1] && opcode == 2){
