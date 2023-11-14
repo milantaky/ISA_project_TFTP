@@ -468,6 +468,7 @@ int zkontrolujOACK(char response[], int readBytes, int vals[], struct sockaddr_i
                     opts[0] = 1;
                 } else if (opt == 2){
                     opts[1] = 1;
+                    vals[1] = atoi(value);
                 } else {
                     opts[2] = 1;
                 }
