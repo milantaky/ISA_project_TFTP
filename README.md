@@ -1,7 +1,9 @@
 ISA projekt
+
 TFTP Server + Klient
 ===
 **Autor:** Milan Takáč - xtakac09
+
 3BIT FIT VUT
 
 14. Listopadu 2023
