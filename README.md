@@ -4,6 +4,8 @@ TFTP Server + Klient
 **Autor:** Milan Takáč - xtakac09
 3BIT FIT VUT
 
+14. Listopadu 2023
+
 O projektu:
 ---
 Náplní tohoto projektu bylo naprogramovat server a klienta pro komunikaci
