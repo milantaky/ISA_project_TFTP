@@ -94,6 +94,7 @@ Po přijetí/odeslání finálního packetu se spojení i klient ukončí.
 - tftp-server.c
 - manual.pdf
 - README.md
+- tftp.pcapng
 
 **Zdroje**
 ===
