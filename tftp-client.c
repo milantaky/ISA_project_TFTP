@@ -706,7 +706,6 @@ int main(int argc, char* argv[]){
         }
     }
 
-
     // NASTAVENI OPTIONS
     int opts[3] = {1, 1, 1};            // timeout, tsize, blksize
     int vals[3] = {5, 0, 1024};

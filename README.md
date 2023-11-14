@@ -86,6 +86,9 @@ Po přijetí/odeslání finálního packetu se spojení i klient ukončí.
 **Zdroje**
 ===
 [1] RFC 1348 - (https://datatracker.ietf.org/doc/html/rfc1350)
+
 [2] RFC 2347 - (https://datatracker.ietf.org/doc/html/rfc2347)
+
 [3] RFC 2348 - (https://datatracker.ietf.org/doc/html/rfc2348)
+
 [4] RFC 2349 - (https://datatracker.ietf.org/doc/html/rfc2349)
