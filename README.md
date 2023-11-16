@@ -89,6 +89,7 @@ Po přijetí/odeslání finálního packetu se spojení i klient ukončí.
 - Složka WRITE
 - Složka CLIENT
 - Složka READ + test.txt
+- test.txt (pro write)
 - Makefile
 - tftp-client.c
 - tftp-server.c
