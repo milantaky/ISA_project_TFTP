@@ -3,15 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>         // sockets duh
+#include <sys/socket.h>      
 #include <netinet/in.h>      
 #include <netinet/ip.h>       
 #include <netinet/udp.h>      
-#include <errno.h>           // ???
-#include <signal.h>             // interrupt
-#include <sys/time.h>               // na timeout?
-#include <arpa/inet.h>          // htons
-#include <net/ethernet.h>       // ???
+#include <errno.h>          
+#include <signal.h>           
+#include <sys/time.h>           
+#include <arpa/inet.h>        
+#include <net/ethernet.h>       
 #include <unistd.h>
 #include <ctype.h>
 
@@ -844,8 +844,6 @@ int main(int argc, char* argv[]){
     server.sin_port          = htons(port);
     server.sin_addr.s_addr   = INADDR_ANY;
 
-    // fork() ??? pak upravit listen na delsi frontu nez 1
-
     // SOCKETY
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);  
 
@@ -880,7 +878,6 @@ int main(int argc, char* argv[]){
     char sendBuffer[max_buffer_size];       
     memset(buffer, 0 , max_buffer_size);            // Vynuluje buffer
     memset(sendBuffer, 0 , max_buffer_size);        // Vynuluje buffer
-    // int blockNumber = 0;
     int mode = 0;                                   // 1 = netascii, 2 = octet
     int offset;
     char *location = NULL;                          // cesta kam se budou ukladat soubory / odkud se budou cist -> zalezi na mode (root_dirpath)

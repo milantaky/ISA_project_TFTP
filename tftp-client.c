@@ -7,14 +7,14 @@ typedef unsigned short u_short;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>         // sockets duh
+#include <sys/socket.h>      
 #include <netinet/in.h>      
 #include <netinet/ip.h>       
 #include <netinet/udp.h>      
 #include <errno.h>           
-#include <signal.h>             // interrupt
+#include <signal.h>           
 #include <sys/time.h>               
-#include <pcap/pcap.h>          // gethostbyname,...
+#include <pcap/pcap.h>          
 #include <arpa/inet.h>          
 #include <net/ethernet.h>       
 #include <unistd.h>
@@ -740,8 +740,7 @@ int main(int argc, char* argv[]){
 
 //===================================================
 
-// ============= Ziskani IP adresy
-    // SERVER - (funguje pro hostname, i pro adresu)
+// ============= Ziskani IP adresy serveru
     struct hostent *serverHostname;
     char *serverIP = NULL;
 
@@ -818,7 +817,6 @@ int main(int argc, char* argv[]){
         close(sockfd);
         return 1; 
     }
-    printf("chytil jsem\n");
 
     if(opcode == 1){        // Zpracuj cteni
 
